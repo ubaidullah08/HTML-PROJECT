@@ -276,8 +276,8 @@ const AmbientEngine = {
       this.ctx.save();
       this.ctx.beginPath();
       this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-      this.ctx.fillStyle = `rgba(212, 168, 83, ${p.alpha})`;
-      this.ctx.shadowColor = "rgba(212, 168, 83, 0.4)";
+      this.ctx.fillStyle = `rgba(91, 140, 90, ${p.alpha})`;
+      this.ctx.shadowColor = "rgba(91, 140, 90, 0.3)";
       this.ctx.shadowBlur = p.radius * 3;
       this.ctx.fill();
       this.ctx.restore();
@@ -310,7 +310,7 @@ const ConfettiEngine = {
 
   burst(originX, originY) {
     this.resize();
-    const colors = ["#d4a853", "#f0ece4", "#f59e0b", "#3ecf8e", "#b07cf0", "#e8c068"];
+    const colors = ["#5b8c5a", "#f0efe8", "#4d9088", "#8b6cad", "#c4b99a", "#5a7fa3"];
     const count = 90;
     const ox = originX || window.innerWidth / 2;
     const oy = originY || window.innerHeight / 2;

@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="RestroFlow — Premium Restaurant Order & Kitchen Workflow System. Manage tables, orders, kitchen preparation, billing, and order history from one integrated luxury dashboard." />
+  <meta name="description" content="RestroFlow — Premium Restaurant Order & Kitchen Workflow System. Manage tables, orders, kitchen preparation, billing, and order history from one integrated dashboard." />
   <title>RestroFlow — Restaurant Order &amp; Kitchen System</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,800;1,700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700;900&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
 </head>
 <body>
 
@@ -16,47 +16,10 @@
   <canvas id="ambient-canvas"></canvas>
   <canvas id="confetti-canvas"></canvas>
 
-  <!-- ═══════════════════ TOP NAV ═══════════════════ -->
-  <header id="app-header">
-    <div class="header-brand">
-      <div class="brand-icon-wrap">
-        <span class="brand-icon">🍽️</span>
-        <span class="brand-icon-ring"></span>
-      </div>
-      <div class="brand-text">
-        <h1>RestroFlow</h1>
-        <span class="brand-tagline">Premium Kitchen Intelligence</span>
-      </div>
-    </div>
-    <nav id="main-nav">
-      <button class="nav-btn active" data-view="tables">
-        <span class="nav-icon">🪑</span>
-        <span class="nav-label">Tables &amp; POS</span>
-        <span class="nav-badge-key">1</span>
-        <span class="nav-btn-glow"></span>
-      </button>
-      <button class="nav-btn" data-view="kitchen">
-        <span class="nav-icon">👨‍🍳</span>
-        <span class="nav-label">Kitchen (KDS)</span>
-        <span class="nav-counter" id="nav-kds-badge">0</span>
-        <span class="nav-badge-key">2</span>
-        <span class="nav-btn-glow"></span>
-      </button>
-      <button class="nav-btn" data-view="bills">
-        <span class="nav-icon">🧾</span>
-        <span class="nav-label">Bills &amp; Checkout</span>
-        <span class="nav-counter" id="nav-bills-badge">0</span>
-        <span class="nav-badge-key">3</span>
-        <span class="nav-btn-glow"></span>
-      </button>
-      <button class="nav-btn" data-view="history">
-        <span class="nav-icon">📋</span>
-        <span class="nav-label">Order History</span>
-        <span class="nav-badge-key">4</span>
-        <span class="nav-btn-glow"></span>
-      </button>
-    </nav>
-    <div class="header-right">
+  <!-- ═══════════════════ TOP BANNER BAR ═══════════════════ -->
+  <div class="top-banner">
+    <span class="banner-tagline">KITCHEN INTELLIGENCE SYSTEM &nbsp;—&nbsp; FAST, PRECISE, AND EFFICIENT</span>
+    <div class="banner-right-icons">
       <button class="sound-toggle-btn" id="sound-toggle" title="Toggle Audio Chimes (Keyboard: S)">
         <span id="sound-icon">🔔</span>
         <span class="sound-label" id="sound-label">Audio On</span>
@@ -66,6 +29,43 @@
         <span>LIVE</span>
       </div>
       <div class="header-clock" id="header-clock"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ HEADER / BRAND + NAV ═══════════════════ -->
+  <header id="app-header">
+    <div class="header-brand">
+      <div class="brand-icon-wrap">
+        <span class="brand-icon">🍽️</span>
+        <span class="brand-icon-ring"></span>
+      </div>
+      <div class="brand-text">
+        <h1>RESTROFLOW</h1>
+        <span class="brand-tagline">Kitchen & Order Management</span>
+      </div>
+    </div>
+    <div class="header-divider-line"></div>
+    <nav id="main-nav">
+      <button class="nav-btn active" data-view="tables">
+        <span class="nav-label">Tables & POS</span>
+        <span class="nav-badge-key">1</span>
+      </button>
+      <button class="nav-btn" data-view="kitchen">
+        <span class="nav-label">Kitchen (KDS)</span>
+        <span class="nav-counter" id="nav-kds-badge">0</span>
+        <span class="nav-badge-key">2</span>
+      </button>
+      <button class="nav-btn" data-view="bills">
+        <span class="nav-label">Bills & Checkout</span>
+        <span class="nav-counter" id="nav-bills-badge">0</span>
+        <span class="nav-badge-key">3</span>
+      </button>
+      <button class="nav-btn" data-view="history">
+        <span class="nav-label">Order History</span>
+        <span class="nav-badge-key">4</span>
+      </button>
+    </nav>
+    <div class="header-right">
     </div>
   </header>
 
@@ -79,16 +79,16 @@
         <!-- LEFT: Table Grid -->
         <div class="tables-grid-panel glass-panel">
           <div class="panel-header-row">
-            <h2 class="panel-title"><span class="title-accent">◈</span> Floor Plan</h2>
+            <h2 class="panel-title"><span class="title-accent">▸</span> Floor Plan</h2>
             <span class="table-selection-hint" id="table-selection-status">No table selected</span>
           </div>
 
           <div class="status-legend" id="status-legend-bar">
             <button class="legend-filter-btn active" data-filter="all">All (8)</button>
-            <button class="legend-filter-btn" data-filter="available"><span class="legend-chip-dot" style="background:#22c55e"></span>Avail (<span id="count-avail">0</span>)</button>
-            <button class="legend-filter-btn" data-filter="preparing"><span class="legend-chip-dot" style="background:#f97316"></span>Prep (<span id="count-prep">0</span>)</button>
-            <button class="legend-filter-btn" data-filter="ready"><span class="legend-chip-dot" style="background:#a855f7"></span>Ready (<span id="count-ready">0</span>)</button>
-            <button class="legend-filter-btn" data-filter="served"><span class="legend-chip-dot" style="background:#14b8a6"></span>Served (<span id="count-served">0</span>)</button>
+            <button class="legend-filter-btn" data-filter="available"><span class="legend-chip-dot" style="background:#5b8c5a"></span>Avail (<span id="count-avail">0</span>)</button>
+            <button class="legend-filter-btn" data-filter="preparing"><span class="legend-chip-dot" style="background:#c4813d"></span>Prep (<span id="count-prep">0</span>)</button>
+            <button class="legend-filter-btn" data-filter="ready"><span class="legend-chip-dot" style="background:#9b7cb5"></span>Ready (<span id="count-ready">0</span>)</button>
+            <button class="legend-filter-btn" data-filter="served"><span class="legend-chip-dot" style="background:#5b9e96"></span>Served (<span id="count-served">0</span>)</button>
           </div>
 
           <div id="table-grid" class="table-grid"></div>
@@ -97,7 +97,7 @@
         <!-- CENTRE: Menu -->
         <div class="menu-panel glass-panel" id="menu-panel">
           <div class="panel-header-row">
-            <h2 class="panel-title"><span class="title-accent">◈</span> Curated Menu</h2>
+            <h2 class="panel-title"><span class="title-accent">▸</span> Curated Menu</h2>
             <span class="menu-target-table" id="menu-target-table">—</span>
           </div>
           <div id="menu-category-tabs" class="category-tabs"></div>
@@ -111,7 +111,7 @@
         <!-- RIGHT: Current Order Ticket -->
         <div class="ticket-panel glass-panel" id="ticket-panel">
           <div class="panel-header-row">
-            <h2 class="panel-title"><span class="title-accent">◈</span> Ticket — <span id="ticket-table-label">—</span></h2>
+            <h2 class="panel-title"><span class="title-accent">▸</span> Ticket — <span id="ticket-table-label">—</span></h2>
             <span class="ticket-state-tag" id="ticket-state-tag">Idle</span>
           </div>
           <div id="ticket-items" class="ticket-items"></div>
@@ -133,7 +133,7 @@
     <section id="view-kitchen" class="view">
       <div class="kds-header-row">
         <div>
-          <h2 class="panel-title kds-title"><span class="title-accent">◈</span> Kitchen Display System</h2>
+          <h2 class="panel-title kds-title"><span class="title-accent">▸</span> Kitchen Display System</h2>
           <p class="section-sub">Live culinary prep queue with ticket alerts and elapsed time tracking</p>
         </div>
         <div class="kds-filter-bar" id="kds-filter-bar">
@@ -154,7 +154,7 @@
     <section id="view-bills" class="view">
       <div class="panel-header-row" style="margin-bottom:1rem;">
         <div>
-          <h2 class="panel-title"><span class="title-accent">◈</span> Active Bills &amp; Guest Settlement</h2>
+          <h2 class="panel-title"><span class="title-accent">▸</span> Active Bills &amp; Guest Settlement</h2>
           <p class="section-sub">Itemized guest checks, customizable service charge, and instant table release</p>
         </div>
       </div>
@@ -236,7 +236,7 @@
 
       <button id="btn-add-to-order" class="btn-primary btn-add-order">
         <span class="btn-shimmer"></span>
-        ✨ Add to Order
+        Add to Order
       </button>
     </div>
   </div>
@@ -247,9 +247,9 @@
       <button class="modal-close" id="receipt-modal-close">&times;</button>
       <div class="receipt-paper" id="receipt-paper">
         <div class="receipt-header">
-          <div class="receipt-crest">⚜️</div>
+          <div class="receipt-crest">🍽️</div>
           <h2 class="receipt-brand">RESTROFLOW</h2>
-          <p class="receipt-sub">Haute Cuisine &amp; Fine Dining</p>
+          <p class="receipt-sub">Kitchen &amp; Order Management</p>
           <div class="receipt-divider-dash"></div>
           <div class="receipt-meta-grid">
             <div><strong>Table:</strong> <span id="rec-table">T-</span></div>
