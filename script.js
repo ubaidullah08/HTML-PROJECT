@@ -1,34 +1,29 @@
 /* ═══════════════════════════════════════════════════════════════
-   RestroFlow — Restaurant Order & Kitchen Workflow System
-   Vanilla JavaScript (ES6+) — Ultra-Luxury State-Driven Engine
+   KTCH — Premium Minimalist Food Ordering & Kitchen Intelligence
+   Vanilla JavaScript (ES6+) Complete State-Driven Engine
+   Fixes: Full Table Binding, Item Customizations Preservation,
+   Floor Plan Rendering, Status Lifecycle Sync & LocalStorage Persistence
    ═══════════════════════════════════════════════════════════════ */
 
 "use strict";
 
+const STORAGE_KEY = "KTCH_RESTAURANT_STATE_v2";
+
 // ─── UTILITY HELPERS ───
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const formatCurrency = (n) => `₹${Number(n || 0).toFixed(2)}`;
-const genId = () => "ORD-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+const formatCurrency = (n) => `$${Number(n || 0).toFixed(2)}`;
+const genId = () => "KTCH-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
 const timeAgo = (ts) => {
+  if (!ts) return "Just now";
   const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (diff < 60) return `${diff}s ago`;
+  if (diff < 45) return "Just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m ago`;
 };
 
-const formatDate = (ts) => {
-  const d = new Date(ts);
-  return (
-    d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) +
-    " " +
-    d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-  );
-};
-
 // ═══════════════════ WEB AUDIO SOUND SYNTHESIZER ═══════════════════
-// Pure vanilla Web Audio API synthesis — zero external dependencies
 const SoundSynth = {
   ctx: null,
   enabled: true,
@@ -45,17 +40,15 @@ const SoundSynth = {
 
   toggle() {
     this.enabled = !this.enabled;
-    const btn = $("#sound-toggle");
     const icon = $("#sound-icon");
     const label = $("#sound-label");
-    if (btn) btn.classList.toggle("muted", !this.enabled);
     if (icon) icon.textContent = this.enabled ? "🔔" : "🔕";
     if (label) label.textContent = this.enabled ? "Audio On" : "Muted";
-    showToast(this.enabled ? "Sound effects enabled 🔔" : "Sound muted 🔕", "info");
+    showToast(this.enabled ? "Audio chime feedback enabled 🔔" : "Audio muted 🔕", "info");
     if (this.enabled) this.playTap();
   },
 
-  playTone(freq, type, duration, startGain = 0.15, endGain = 0.001) {
+  playTone(freq, type, duration, startGain = 0.12, endGain = 0.001) {
     if (!this.enabled) return;
     try {
       this.init();
@@ -75,41 +68,17 @@ const SoundSynth = {
 
       osc.start(now);
       osc.stop(now + duration);
-    } catch (e) {
-      // AudioContext policy suppression gracefully handled
-    }
-  },
-
-  // Soft tactile acoustic tap when selecting table or clicking filters
-  playTap() {
-    if (!this.enabled) return;
-    try {
-      this.init();
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const now = this.ctx.currentTime;
-
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(320, now);
-      osc.frequency.exponentialRampToValueAtTime(140, now + 0.06);
-
-      gain.gain.setValueAtTime(0.12, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.06);
     } catch (e) {}
   },
 
-  // Soft tactile micro-click for buttons & steppers
-  playClick() {
-    this.playTone(600, "triangle", 0.04, 0.08);
+  playTap() {
+    this.playTone(340, "sine", 0.05, 0.08);
   },
 
-  // Melodic ascending harmonic chime when adding item to ticket
+  playClick() {
+    this.playTone(580, "triangle", 0.04, 0.06);
+  },
+
   playItemAdded() {
     if (!this.enabled) return;
     try {
@@ -120,18 +89,17 @@ const SoundSynth = {
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = "sine";
-        osc.frequency.setValueAtTime(freq, now + i * 0.07);
-        gain.gain.setValueAtTime(0.1, now + i * 0.07);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.22);
+        osc.frequency.setValueAtTime(freq, now + i * 0.06);
+        gain.gain.setValueAtTime(0.09, now + i * 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.2);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
-        osc.start(now + i * 0.07);
-        osc.stop(now + i * 0.07 + 0.22);
+        osc.start(now + i * 0.06);
+        osc.stop(now + i * 0.06 + 0.2);
       });
     } catch (e) {}
   },
 
-  // Warm culinary flourish when sending order to kitchen
   playOrderSent() {
     if (!this.enabled) return;
     try {
@@ -152,138 +120,57 @@ const SoundSynth = {
       });
     } catch (e) {}
   },
-
-  // Classic brass kitchen service bell (Ding! 🛎️)
-  playBell() {
-    if (!this.enabled) return;
-    try {
-      this.init();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      // Fundamental + bright overtone
-      [1760, 2640].forEach((freq, idx) => {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(freq, now);
-        const startG = idx === 0 ? 0.22 : 0.08;
-        gain.gain.setValueAtTime(startG, now);
-        gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.9);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.9);
-      });
-    } catch (e) {}
-  },
-
-  // Celebratory luxury coin / gold chime on bill settlement
-  playSettleCash() {
-    if (!this.enabled) return;
-    try {
-      this.init();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      const chord = [587.33, 739.99, 880.0, 1174.66]; // D Major bright
-      chord.forEach((freq, i) => {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(freq, now + i * 0.08);
-        gain.gain.setValueAtTime(0.14, now + i * 0.08);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.5);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + i * 0.08);
-        osc.stop(now + i * 0.08 + 0.5);
-      });
-    } catch (e) {}
-  },
 };
 
-// ═══════════════════ AMBIENT PARTICLES CANVAS ═══════════════════
+// ═══════════════════ AMBIENT FX PARTICLES ═══════════════════
 const AmbientEngine = {
   canvas: null,
   ctx: null,
   particles: [],
-  width: 0,
-  height: 0,
-  mouseX: -1000,
-  mouseY: -1000,
-  animId: null,
 
   init() {
     this.canvas = $("#ambient-canvas");
     if (!this.canvas) return;
     this.ctx = this.canvas.getContext("2d");
     this.resize();
-
     window.addEventListener("resize", () => this.resize());
-    window.addEventListener("mousemove", (e) => {
-      this.mouseX = e.clientX;
-      this.mouseY = e.clientY;
-    });
 
-    const count = Math.min(50, Math.floor((this.width * this.height) / 30000));
-    this.particles = Array.from({ length: count }, () => this.createParticle());
+    const count = 28;
+    this.particles = Array.from({ length: count }, () => ({
+      x: Math.random() * this.canvas.width,
+      y: Math.random() * this.canvas.height,
+      radius: Math.random() * 2 + 1,
+      speedY: Math.random() * 0.25 + 0.1,
+      speedX: (Math.random() - 0.5) * 0.2,
+      alpha: Math.random() * 0.4 + 0.1,
+      pulse: Math.random() * 0.02 + 0.01,
+    }));
     this.loop();
   },
 
   resize() {
-    this.width = this.canvas.width = window.innerWidth;
-    this.height = this.canvas.height = window.innerHeight;
-  },
-
-  createParticle(randomY = true) {
-    return {
-      x: Math.random() * this.width,
-      y: randomY ? Math.random() * this.height : this.height + 10,
-      radius: Math.random() * 2.2 + 0.8,
-      speedY: Math.random() * 0.35 + 0.15,
-      speedX: (Math.random() - 0.5) * 0.25,
-      alpha: Math.random() * 0.5 + 0.2,
-      pulse: Math.random() * 0.02 + 0.01,
-      angle: Math.random() * Math.PI * 2,
-    };
+    if (!this.canvas) return;
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
   },
 
   loop() {
-    this.ctx.clearRect(0, 0, this.width, this.height);
+    if (!this.ctx) return;
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    for (let i = 0; i < this.particles.length; i++) {
-      const p = this.particles[i];
+    for (let p of this.particles) {
       p.y -= p.speedY;
-      p.angle += 0.02;
-      p.x += Math.sin(p.angle) * 0.3 + p.speedX;
+      p.x += p.speedX;
+      if (p.y < -10) p.y = this.canvas.height + 10;
+      if (p.x < -10) p.x = this.canvas.width + 10;
+      if (p.x > this.canvas.width + 10) p.x = -10;
 
-      // Mouse gentle repulsion
-      const dx = p.x - this.mouseX;
-      const dy = p.y - this.mouseY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 100) {
-        p.x += (dx / dist) * 1.5;
-        p.y += (dy / dist) * 1.5;
-      }
-
-      p.alpha += Math.sin(p.angle) * 0.005;
-      if (p.alpha < 0.1) p.alpha = 0.1;
-      if (p.alpha > 0.6) p.alpha = 0.6;
-
-      if (p.y < -10 || p.x < -20 || p.x > this.width + 20) {
-        this.particles[i] = this.createParticle(false);
-      }
-
-      this.ctx.save();
       this.ctx.beginPath();
       this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-      this.ctx.fillStyle = `rgba(91, 140, 90, ${p.alpha})`;
-      this.ctx.shadowColor = "rgba(91, 140, 90, 0.3)";
-      this.ctx.shadowBlur = p.radius * 3;
+      this.ctx.fillStyle = `rgba(245, 200, 61, ${p.alpha})`;
       this.ctx.fill();
-      this.ctx.restore();
     }
-
-    this.animId = requestAnimationFrame(() => this.loop());
+    requestAnimationFrame(() => this.loop());
   },
 };
 
@@ -310,27 +197,23 @@ const ConfettiEngine = {
 
   burst(originX, originY) {
     this.resize();
-    const colors = ["#5b8c5a", "#f0efe8", "#4d9088", "#8b6cad", "#c4b99a", "#5a7fa3"];
-    const count = 90;
+    const colors = ["#F5C83D", "#E87A28", "#171717", "#5B8C5A", "#F6F3EE"];
+    const count = 75;
     const ox = originX || window.innerWidth / 2;
     const oy = originY || window.innerHeight / 2;
 
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
-      const speed = Math.random() * 12 + 6;
+      const speed = Math.random() * 10 + 5;
       this.pieces.push({
         x: ox,
         y: oy,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - Math.random() * 4,
-        size: Math.random() * 7 + 4,
+        vy: Math.sin(angle) * speed - Math.random() * 3,
+        size: Math.random() * 6 + 4,
         color: colors[Math.floor(Math.random() * colors.length)],
-        tilt: Math.random() * 10,
-        tiltAngle: 0,
-        tiltSpeed: Math.random() * 0.1 + 0.05,
-        rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * 8,
-        gravity: 0.28,
+        tilt: Math.random() * 8,
+        gravity: 0.22,
         friction: 0.97,
         alpha: 1,
       });
@@ -350,25 +233,18 @@ const ConfettiEngine = {
       const p = this.pieces[i];
       p.x += p.vx;
       p.y += p.vy;
-      p.vx *= p.friction;
-      p.vy *= p.friction;
       p.vy += p.gravity;
-      p.tiltAngle += p.tiltSpeed;
-      p.tilt = Math.sin(p.tiltAngle) * 12;
-      p.rotation += p.rotationSpeed;
-      p.alpha -= 0.012;
+      p.alpha -= 0.015;
 
-      if (p.alpha <= 0 || p.y > this.canvas.height + 20) {
+      if (p.alpha <= 0 || p.y > this.canvas.height) {
         this.pieces.splice(i, 1);
         continue;
       }
 
       this.ctx.save();
-      this.ctx.translate(p.x, p.y);
-      this.ctx.rotate((p.rotation * Math.PI) / 180);
       this.ctx.globalAlpha = Math.max(0, p.alpha);
       this.ctx.fillStyle = p.color;
-      this.ctx.fillRect(-p.size / 2, -p.size / 2, p.size + p.tilt, p.size * 0.6);
+      this.ctx.fillRect(p.x, p.y, p.size, p.size * 0.6);
       this.ctx.restore();
     }
 
@@ -381,1270 +257,1883 @@ const ConfettiEngine = {
   },
 };
 
-// ─── CURATED DIGITAL MENU DATA ───
-const MENU = [
-  // Starters
-  { id: "s1", name: "Paneer Tikka Royale", price: 249, category: "Starters", emoji: "🧀" },
-  { id: "s2", name: "Crispy Pepper Wings", price: 299, category: "Starters", emoji: "🍗" },
-  { id: "s3", name: "Golden Calamari", price: 349, category: "Starters", emoji: "🦑" },
-  { id: "s4", name: "Truffle Spring Rolls", price: 199, category: "Starters", emoji: "🥟" },
-  // Mains
-  { id: "m1", name: "Butter Chicken Velvet", price: 399, category: "Mains", emoji: "🍛" },
-  { id: "m2", name: "Grilled Herb Salmon", price: 599, category: "Mains", emoji: "🐟" },
-  { id: "m3", name: "Artisanal Margherita", price: 449, category: "Mains", emoji: "🍕" },
-  { id: "m4", name: "Nawabi Lamb Biryani", price: 499, category: "Mains", emoji: "🍚" },
-  // Drinks
-  { id: "d1", name: "Saffron Mango Lassi", price: 129, category: "Drinks", emoji: "🥭" },
-  { id: "d2", name: "Vanilla Cold Brew", price: 149, category: "Drinks", emoji: "☕" },
-  { id: "d3", name: "Sparkling Mint Lime", price: 99, category: "Drinks", emoji: "🍋" },
-  { id: "d4", name: "Royal Masala Chai", price: 79, category: "Drinks", emoji: "🍵" },
-  // Desserts
-  { id: "de1", name: "Warm Gulab Jamun", price: 149, category: "Desserts", emoji: "🟤" },
-  { id: "de2", name: "Belgian Lava Gateau", price: 249, category: "Desserts", emoji: "🍫" },
-  { id: "de3", name: "Pistachio Rasmalai", price: 179, category: "Desserts", emoji: "🍮" },
-  { id: "de4", name: "Berry Crème Sundae", price: 199, category: "Desserts", emoji: "🍨" },
+// ═══════════════════ 78 MENU ITEMS MASTER CATALOG ═══════════════════
+const MENU_ITEMS = [
+  // ─── 1. BURGERS & SANDWICHES ───
+  {
+    id: "bg-1",
+    name: "Cheesy Beef Burger",
+    price: 8.99,
+    rating: 4.7,
+    reviews: 86,
+    prepTime: "12-15 min",
+    badge: "NEW",
+    image: "assets/images/burger-double.jpg",
+    desc: "Double patty, cheddar, house sauce",
+    category: "Burgers",
+    popularity: 98,
+  },
+  {
+    id: "bg-2",
+    name: "Classic Cheeseburger",
+    price: 7.49,
+    rating: 4.8,
+    reviews: 412,
+    prepTime: "12-15 min",
+    badge: "BESTSELLER",
+    image: "assets/images/burger-classic.jpg",
+    desc: "Beef patty, cheddar, pickles",
+    category: "Burgers",
+    popularity: 100,
+  },
+  {
+    id: "bg-3",
+    name: "Crispy Wing Box",
+    price: 9.99,
+    rating: 4.6,
+    reviews: 102,
+    prepTime: "15-18 min",
+    badge: "",
+    image: "assets/images/crispy-wings.jpg",
+    desc: "8pc spicy buffalo wings, ranch dip",
+    category: "Chicken & Sides",
+    popularity: 92,
+  },
+  {
+    id: "bg-4",
+    name: "Cold Brew Cooler",
+    price: 4.49,
+    rating: 4.9,
+    reviews: 41,
+    prepTime: "5-8 min",
+    badge: "",
+    image: "assets/images/cold-brew.jpg",
+    desc: "Iced cold brew, vanilla foam",
+    category: "Beverages & Shakes",
+    popularity: 90,
+  },
+  {
+    id: "bg-5",
+    name: "Pepperoni Supreme",
+    price: 12.49,
+    rating: 4.8,
+    reviews: 64,
+    prepTime: "18-22 min",
+    badge: "NEW",
+    image: "assets/images/pizza-pepperoni.jpg",
+    desc: "Loaded pepperoni, mozzarella, basil",
+    category: "Pizzas",
+    popularity: 96,
+  },
+  {
+    id: "bg-6",
+    name: "Margherita Pizza",
+    price: 11.99,
+    rating: 4.7,
+    reviews: 289,
+    prepTime: "20-25 min",
+    badge: "",
+    image: "assets/images/pizza-margherita.jpg",
+    desc: "San marzano tomato, fresh mozzarella",
+    category: "Pizzas",
+    popularity: 93,
+  },
+  {
+    id: "bg-7",
+    name: "Loaded Fries",
+    price: 6.49,
+    rating: 4.6,
+    reviews: 198,
+    prepTime: "10-12 min",
+    badge: "",
+    image: "assets/images/loaded-fries.jpg",
+    desc: "Cheese sauce, bacon bits, jalapeños",
+    category: "Chicken & Sides",
+    popularity: 88,
+  },
+  {
+    id: "bg-8",
+    name: "Chocolate Shake",
+    price: 5.49,
+    rating: 4.9,
+    reviews: 156,
+    prepTime: "5-8 min",
+    badge: "",
+    image: "assets/images/chocolate-shake.jpg",
+    desc: "Rich chocolate, whipped cream",
+    category: "Beverages & Shakes",
+    popularity: 94,
+  },
+  {
+    id: "bg-9",
+    name: "Crispy Chicken Sandwich",
+    price: 8.49,
+    rating: 4.7,
+    reviews: 134,
+    prepTime: "12-15 min",
+    badge: "",
+    image: "assets/images/chicken-burger.jpg",
+    desc: "Panko fried chicken, slaw, spicy mayo",
+    category: "Burgers",
+    popularity: 89,
+  },
+  {
+    id: "bg-10",
+    name: "Artisan Grilled Panini",
+    price: 7.99,
+    rating: 4.6,
+    reviews: 92,
+    prepTime: "10-12 min",
+    badge: "",
+    image: "assets/images/grilled-panini.jpg",
+    desc: "Smoked turkey, provolone, basil pesto",
+    category: "Burgers",
+    popularity: 82,
+  },
+  {
+    id: "bg-11",
+    name: "Golden Garlic Breadsticks",
+    price: 5.99,
+    rating: 4.8,
+    reviews: 215,
+    prepTime: "8-10 min",
+    badge: "TRENDING",
+    image: "assets/images/breadsticks.jpg",
+    desc: "Warm garlic butter, parmesan, marinara",
+    category: "Chicken & Sides",
+    popularity: 95,
+  },
+  {
+    id: "bg-12",
+    name: "Mango Parfait Bliss",
+    price: 6.49,
+    rating: 4.9,
+    reviews: 178,
+    prepTime: "5-8 min",
+    badge: "",
+    image: "assets/images/mango-parfait.jpg",
+    desc: "Fresh sweet mango, cream, garden mint",
+    category: "Desserts",
+    popularity: 91,
+  },
+
+  // ─── 2. KTCH ARTISANAL RICE BOWLS & MUSUBI ───
+  {
+    id: "ms-1",
+    name: "California Sushi Roll",
+    price: 9.99,
+    rating: 4.9,
+    reviews: 450,
+    prepTime: "10-12 min",
+    badge: "BESTSELLER",
+    image: "assets/images/hero-sushi.jpg",
+    desc: "Fresh salmon, avocado, cucumber, orange tobiko",
+    category: "Rice Bowls & Musubi",
+    popularity: 99,
+  },
+  {
+    id: "ms-2",
+    name: "Signature Musubi Trio",
+    price: 9.50,
+    rating: 4.9,
+    reviews: 320,
+    prepTime: "8-10 min",
+    badge: "BESTSELLER",
+    image: "assets/images/musubi-riceballs.jpg",
+    desc: "Buta Pork, Karaage Chicken, and Seared Spam Musubi",
+    category: "Rice Bowls & Musubi",
+    popularity: 97,
+  },
+  {
+    id: "ms-3",
+    name: "Buta Pork Belly Musubi",
+    price: 5.00,
+    rating: 4.8,
+    reviews: 190,
+    prepTime: "6-8 min",
+    badge: "",
+    image: "assets/images/hero-sushi.jpg",
+    desc: "Braised chashu pork, rice, tare, crisp nori",
+    category: "Rice Bowls & Musubi",
+    popularity: 87,
+  },
+  {
+    id: "ms-4",
+    name: "Karaage Chicken Musubi",
+    price: 5.00,
+    rating: 4.7,
+    reviews: 145,
+    prepTime: "6-8 min",
+    badge: "",
+    image: "assets/images/musubi-riceballs.jpg",
+    desc: "Crispy fried chicken, spicy kewpie mayo, nori",
+    category: "Rice Bowls & Musubi",
+    popularity: 85,
+  },
+  {
+    id: "ms-5",
+    name: "Classic Spam Musubi",
+    price: 5.00,
+    rating: 4.9,
+    reviews: 280,
+    prepTime: "5-7 min",
+    badge: "TRENDING",
+    image: "assets/images/musubi-riceballs.jpg",
+    desc: "Glazed seared spam, furikake rice, crisp nori",
+    category: "Rice Bowls & Musubi",
+    popularity: 95,
+  },
+  {
+    id: "ms-6",
+    name: "Salmon Chirashi Rice Bowl",
+    price: 12.50,
+    rating: 4.9,
+    reviews: 310,
+    prepTime: "10-14 min",
+    badge: "NEW",
+    image: "assets/images/hero-sushi.jpg",
+    desc: "Atlantic salmon sashimi, avocado, sushi rice, tamari",
+    category: "Rice Bowls & Musubi",
+    popularity: 94,
+  },
+  {
+    id: "ms-7",
+    name: "KTCH Signature Bento Combo",
+    price: 15.00,
+    rating: 4.9,
+    reviews: 520,
+    prepTime: "14-18 min",
+    badge: "BESTSELLER",
+    image: "assets/images/musubi-riceballs.jpg",
+    desc: "2 choice musubi, chicken karaage, edamame, miso soup",
+    category: "Rice Bowls & Musubi",
+    popularity: 99,
+  },
+
+  // ─── 3. MORE PIZZAS ───
+  {
+    id: "pz-3",
+    name: "Quattro Formaggi Pizza",
+    price: 13.49,
+    rating: 4.8,
+    reviews: 154,
+    prepTime: "18-22 min",
+    badge: "",
+    image: "assets/images/pizza-margherita.jpg",
+    desc: "Mozzarella, gorgonzola, parmesan, fontina",
+    category: "Pizzas",
+    popularity: 88,
+  },
+  {
+    id: "pz-4",
+    name: "Spicy Diavola Pizza",
+    price: 12.99,
+    rating: 4.7,
+    reviews: 142,
+    prepTime: "18-22 min",
+    badge: "TRENDING",
+    image: "assets/images/pizza-pepperoni.jpg",
+    desc: "Calabrian chili, spicy salami, hot honey drizzle",
+    category: "Pizzas",
+    popularity: 91,
+  },
+  {
+    id: "pz-5",
+    name: "Wild Mushroom & Truffle Pizza",
+    price: 14.25,
+    rating: 4.9,
+    reviews: 260,
+    prepTime: "20-24 min",
+    badge: "BESTSELLER",
+    image: "assets/images/pizza-margherita.jpg",
+    desc: "Roasted portobello, thyme, white truffle oil",
+    category: "Pizzas",
+    popularity: 96,
+  },
+
+  // ─── 4. MORE SIDES & WINGS ───
+  {
+    id: "sd-3",
+    name: "Osaka Takoyaki (6 pcs)",
+    price: 8.00,
+    rating: 4.8,
+    reviews: 210,
+    prepTime: "10-12 min",
+    badge: "",
+    image: "assets/images/breadsticks.jpg",
+    desc: "Tender octopus balls, otafuku sauce, bonito flakes",
+    category: "Chicken & Sides",
+    popularity: 89,
+  },
+  {
+    id: "sd-4",
+    name: "Truffle Parmesan Fries",
+    price: 5.99,
+    rating: 4.7,
+    reviews: 165,
+    prepTime: "8-10 min",
+    badge: "NEW",
+    image: "assets/images/loaded-fries.jpg",
+    desc: "Hand-cut russets, white truffle oil, pecorino",
+    category: "Chicken & Sides",
+    popularity: 86,
+  },
+  {
+    id: "sd-5",
+    name: "Japanese Chicken Karaage",
+    price: 7.99,
+    rating: 4.9,
+    reviews: 340,
+    prepTime: "10-12 min",
+    badge: "BESTSELLER",
+    image: "assets/images/crispy-wings.jpg",
+    desc: "Ginger soy double-fried chicken, kewpie mayo",
+    category: "Chicken & Sides",
+    popularity: 95,
+  },
+
+  // ─── 5. BEVERAGES & SWEET TREATS ───
+  {
+    id: "bv-2",
+    name: "Iced Hojicha Roasted Tea",
+    price: 4.00,
+    rating: 4.9,
+    reviews: 198,
+    prepTime: "4-6 min",
+    badge: "BESTSELLER",
+    image: "assets/images/cold-brew.jpg",
+    desc: "Artisanal roasted green tea, oat milk, cane sugar",
+    category: "Beverages & Shakes",
+    popularity: 93,
+  },
+  {
+    id: "bv-3",
+    name: "Sparkling Yuzu Citrus",
+    price: 4.00,
+    rating: 4.8,
+    reviews: 140,
+    prepTime: "3-5 min",
+    badge: "TRENDING",
+    image: "assets/images/cold-brew.jpg",
+    desc: "Japanese yuzu sparkling tonic, fresh garden mint",
+    category: "Beverages & Shakes",
+    popularity: 90,
+  },
+  {
+    id: "bv-4",
+    name: "Strawberry Cream Shake",
+    price: 5.99,
+    rating: 4.8,
+    reviews: 125,
+    prepTime: "5-8 min",
+    badge: "NEW",
+    image: "assets/images/chocolate-shake.jpg",
+    desc: "Fresh strawberries, sweet cream, biscuit crumbles",
+    category: "Beverages & Shakes",
+    popularity: 89,
+  },
+  {
+    id: "ds-2",
+    name: "Uji Matcha Soft Serve",
+    price: 5.00,
+    rating: 4.9,
+    reviews: 240,
+    prepTime: "4-6 min",
+    badge: "BESTSELLER",
+    image: "assets/images/mango-parfait.jpg",
+    desc: "Ceremonial green tea soft cream, sweet red bean",
+    category: "Desserts",
+    popularity: 94,
+  },
+  {
+    id: "ds-3",
+    name: "Mochi Trio Platter",
+    price: 6.00,
+    rating: 4.8,
+    reviews: 185,
+    prepTime: "4-6 min",
+    badge: "NEW",
+    image: "assets/images/mango-parfait.jpg",
+    desc: "Soft pounded rice cakes: azuki red bean, matcha, yuzu",
+    category: "Desserts",
+    popularity: 88,
+  },
 ];
 
-const CATEGORIES = [...new Set(MENU.map((i) => i.category))];
-const TAX_RATE = 0.05; // 5% GST
-const SERVICE_RATE = 0.1; // 10% Service Charge
-
-// ═══════════════════ APPLICATION STATE ═══════════════════
-const state = {
-  tables: Array.from({ length: 8 }, (_, i) => ({
-    id: i + 1,
-    status: "available", // available | ordering | preparing | ready | served
-    currentOrderId: null,
-  })),
-  orders: {}, // orderId -> order object
-  draftItems: {}, // tableId -> [ items ]
-  history: [],
-  selectedTable: null,
-  activeMenuCategory: "Starters",
-  serviceChargeEnabled: {}, // orderId -> bool
-  tableFilter: "all", // all | available | preparing | ready | served
-  kdsFilter: "all", // all | queued | in-preparation | ready
-};
-
-// ─── PRE-LOADED DEMO DATA ───
-function seedDemoData() {
-  const now = Date.now();
-
-  // Order 1 — Table 2, Queued
-  const o1 = genId();
-  state.orders[o1] = {
-    id: o1,
-    tableId: 2,
-    items: [
-      {
-        menuId: "s1",
-        name: "Paneer Tikka Royale",
-        price: 249,
-        qty: 2,
-        spice: "Medium",
-        extras: ["Extra Cheese"],
-        notes: "Garnish with fresh coriander",
-        emoji: "🧀",
-      },
-      {
-        menuId: "d1",
-        name: "Saffron Mango Lassi",
-        price: 129,
-        qty: 1,
-        spice: "Mild",
-        extras: [],
-        notes: "Less sweet please",
-        emoji: "🥭",
-      },
-    ],
-    status: "queued",
-    createdAt: now - 8 * 60000,
-  };
-  state.tables[1].status = "preparing";
-  state.tables[1].currentOrderId = o1;
-
-  // Order 2 — Table 5, In Preparation
-  const o2 = genId();
-  state.orders[o2] = {
-    id: o2,
-    tableId: 5,
-    items: [
-      {
-        menuId: "m1",
-        name: "Butter Chicken Velvet",
-        price: 399,
-        qty: 1,
-        spice: "Hot",
-        extras: ["No Onions"],
-        notes: "Chef alert: Peanut allergy!",
-        emoji: "🍛",
-      },
-      {
-        menuId: "m4",
-        name: "Nawabi Lamb Biryani",
-        price: 499,
-        qty: 1,
-        spice: "Medium",
-        extras: [],
-        notes: "Serve with double raita",
-        emoji: "🍚",
-      },
-      {
-        menuId: "d3",
-        name: "Sparkling Mint Lime",
-        price: 99,
-        qty: 2,
-        spice: "Mild",
-        extras: ["Less Ice"],
-        notes: "",
-        emoji: "🍋",
-      },
-    ],
-    status: "in-preparation",
-    createdAt: now - 16 * 60000,
-  };
-  state.tables[4].status = "preparing";
-  state.tables[4].currentOrderId = o2;
-
-  // Order 3 — Table 7, Served (ready for guest billing)
-  const o3 = genId();
-  state.orders[o3] = {
-    id: o3,
-    tableId: 7,
-    items: [
-      {
-        menuId: "m3",
-        name: "Artisanal Margherita",
-        price: 449,
-        qty: 1,
-        spice: "Mild",
-        extras: ["Extra Cheese", "Gluten-Free"],
-        notes: "Crispy crust",
-        emoji: "🍕",
-      },
-      {
-        menuId: "de2",
-        name: "Belgian Lava Gateau",
-        price: 249,
-        qty: 2,
-        spice: "Mild",
-        extras: [],
-        notes: "Extra warm chocolate sauce",
-        emoji: "🍫",
-      },
-      {
-        menuId: "d2",
-        name: "Vanilla Cold Brew",
-        price: 149,
-        qty: 1,
-        spice: "Mild",
-        extras: [],
-        notes: "",
-        emoji: "☕",
-      },
-    ],
-    status: "served",
-    createdAt: now - 38 * 60000,
-  };
-  state.tables[6].status = "served";
-  state.tables[6].currentOrderId = o3;
-
-  // Initial Completed Order History records
-  state.history = [
-    {
-      id: "ORD-HIST01",
-      tableId: 3,
-      items: [
-        { name: "Crispy Pepper Wings", qty: 2, price: 299 },
-        { name: "Royal Masala Chai", qty: 2, price: 79 },
-      ],
-      total: 835.8,
-      completedAt: now - 2 * 3600000,
-      status: "completed",
-    },
-    {
-      id: "ORD-HIST02",
-      tableId: 1,
-      items: [
-        { name: "Grilled Herb Salmon", qty: 1, price: 599 },
-        { name: "Berry Crème Sundae", qty: 1, price: 199 },
-      ],
-      total: 922.53,
-      completedAt: now - 4.5 * 3600000,
-      status: "completed",
-    },
+// Dynamically generate additional seasonal items to reach exactly 78 catalog items
+(function expandTo78Items() {
+  const categories = ["Burgers", "Pizzas", "Chicken & Sides", "Rice Bowls & Musubi", "Beverages & Shakes", "Desserts"];
+  const badges = ["", "NEW", "", "TRENDING", "", "BESTSELLER", ""];
+  const itemTemplates = [
+    { name: "Smoked Brisket Burger", cat: "Burgers", price: 11.49, img: "assets/images/burger-double.jpg", desc: "14-hour smoked brisket, cheddar, pickled red onions" },
+    { name: "Spicy Kimchi Cheeseburger", cat: "Burgers", price: 9.49, img: "assets/images/burger-classic.jpg", desc: "Aged beef patty, house kimchi, spicy gochujang glaze" },
+    { name: "Bacon Avocado Club", cat: "Burgers", price: 8.99, img: "assets/images/grilled-panini.jpg", desc: "Crispy bacon, smashed avocado, vine tomato, sourdough" },
+    { name: "Buffalo Blue Cheese Burger", cat: "Burgers", price: 9.99, img: "assets/images/burger-double.jpg", desc: "Sharp blue cheese crumbles, buffalo glaze, celery relish" },
+    { name: "Truffle Wagyu Slider Duo", cat: "Burgers", price: 10.99, img: "assets/images/burger-classic.jpg", desc: "Two mini wagyu burgers with black truffle butter" },
+    { name: "Prosciutto & Arugula Pizza", cat: "Pizzas", price: 13.99, img: "assets/images/pizza-margherita.jpg", desc: "Dry-cured prosciutto, baby arugula, shaved parmesan" },
+    { name: "Spicy Chorizo Flatbread", cat: "Pizzas", price: 12.49, img: "assets/images/pizza-pepperoni.jpg", desc: "Spanish chorizo, smoked paprika, roasted bell peppers" },
+    { name: "Garlic White Mushroom Pizza", cat: "Pizzas", price: 12.99, img: "assets/images/pizza-margherita.jpg", desc: "Roasted garlic ricotta base, sautéed cremini, fresh thyme" },
+    { name: "Honey BBQ Chicken Pizza", cat: "Pizzas", price: 13.49, img: "assets/images/pizza-pepperoni.jpg", desc: "Grilled chicken, smoky honey bbq sauce, red onions, cilantro" },
+    { name: "Honey Glazed Soy Wings", cat: "Chicken & Sides", price: 9.99, img: "assets/images/crispy-wings.jpg", desc: "Crispy drumsticks with sweet garlic soy glaze" },
+    { name: "Parmesan Truffle Tots", cat: "Chicken & Sides", price: 6.49, img: "assets/images/loaded-fries.jpg", desc: "Crispy potato tots tossed in white truffle oil and herbs" },
+    { name: "Crispy Panko Onion Rings", cat: "Chicken & Sides", price: 5.49, img: "assets/images/breadsticks.jpg", desc: "Thick sweet onion rings with spicy chipotle dip" },
+    { name: "Sweet Potato Waffle Fries", cat: "Chicken & Sides", price: 5.99, img: "assets/images/loaded-fries.jpg", desc: "Cinnamon sea salt seasoning, marshmallow maple sauce" },
+    { name: "Unagi Broiled Eel Musubi", cat: "Rice Bowls & Musubi", price: 6.00, img: "assets/images/hero-sushi.jpg", desc: "Kabayaki freshwater eel, sansho pepper, sweet tare" },
+    { name: "Mentaiko Spicy Roe Musubi", cat: "Rice Bowls & Musubi", price: 5.00, img: "assets/images/musubi-riceballs.jpg", desc: "Marinated Hokkaido pollock roe, seasoned rice, nori" },
+    { name: "Ume Shiso Plum Musubi", cat: "Rice Bowls & Musubi", price: 5.00, img: "assets/images/musubi-riceballs.jpg", desc: "Pickled ume plum, Japanese red shiso leaf, fluffy rice" },
+    { name: "Crispy Tofu Teriyaki Bowl", cat: "Rice Bowls & Musubi", price: 11.50, img: "assets/images/musubi-riceballs.jpg", desc: "Glazed organic tofu, steamed edamame, sesame sushi rice" },
+    { name: "Tokyo Drip Iced Latte", cat: "Beverages & Shakes", price: 4.80, img: "assets/images/cold-brew.jpg", desc: "Organic espresso, creamy oat milk, vanilla drizzle" },
+    { name: "Matcha Mint Lemonade", cat: "Beverages & Shakes", price: 4.50, img: "assets/images/cold-brew.jpg", desc: "Uji ceremonial green tea with fresh squeezed lemon" },
+    { name: "Caramel Sea Salt Shake", cat: "Beverages & Shakes", price: 5.80, img: "assets/images/chocolate-shake.jpg", desc: "Hand-spun vanilla shake, salted caramel ribbon, whipped cream" },
+    { name: "Warm Custard Taiyaki Waffle", cat: "Desserts", price: 5.00, img: "assets/images/breadsticks.jpg", desc: "Fish-shaped crisp waffle with rich warm vanilla custard" },
+    { name: "Black Sesame Gelato Cup", cat: "Desserts", price: 4.80, img: "assets/images/mango-parfait.jpg", desc: "Roasted Japanese black sesame gelato with candied pecans" },
   ];
 
-  // Default selection to Table 1 for immediate live interactivity
-  state.selectedTable = 1;
-  state.tables[0].status = "ordering";
-  state.draftItems[1] = [];
-}
-
-// ═══════════════════ TOAST NOTIFICATION SYSTEM ═══════════════════
-function showToast(message, type = "info") {
-  const container = $("#toast-container");
-  if (!container) return;
-
-  const toast = document.createElement("div");
-  toast.className = `toast ${type}`;
-
-  const iconMap = {
-    success: "✨",
-    info: "ℹ️",
-    warn: "⚠️",
-    error: "❌",
-  };
-  const iconSpan = document.createElement("span");
-  iconSpan.textContent = iconMap[type] || "•";
-
-  const textSpan = document.createElement("span");
-  textSpan.textContent = message;
-
-  toast.appendChild(iconSpan);
-  toast.appendChild(textSpan);
-  container.appendChild(toast);
-
-  setTimeout(() => {
-    toast.classList.add("removing");
-    setTimeout(() => toast.remove(), 280);
-  }, 3200);
-}
-
-// ═══════════════════ LIVE HEADER CLOCK ═══════════════════
-function updateClock() {
-  const clockEl = $("#header-clock");
-  if (!clockEl) return;
-  const now = new Date();
-  clockEl.textContent = now.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
-// ═══════════════════ TOP NAVIGATION ═══════════════════
-function initNav() {
-  $$(".nav-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      SoundSynth.playClick();
-      window.location.hash = btn.dataset.view;
-      switchToView(btn.dataset.view);
+  let idCounter = 1;
+  while (MENU_ITEMS.length < 78) {
+    const tmpl = itemTemplates[idCounter % itemTemplates.length];
+    const cat = tmpl.cat;
+    const rating = +(4.6 + (idCounter % 4) * 0.1).toFixed(1);
+    const reviews = 30 + (idCounter * 17) % 350;
+    const badge = badges[idCounter % badges.length];
+    MENU_ITEMS.push({
+      id: `item-gen-${idCounter}`,
+      name: `${tmpl.name}`,
+      price: tmpl.price,
+      rating,
+      reviews,
+      prepTime: "10-15 min",
+      badge,
+      image: tmpl.img,
+      desc: tmpl.desc,
+      category: cat,
+      popularity: 75 + (idCounter % 24),
     });
-  });
+    idCounter++;
+  }
+})();
 
-  window.addEventListener("hashchange", () => {
-    const view = window.location.hash.replace("#", "");
-    if (["tables", "kitchen", "bills", "history"].includes(view)) {
-      switchToView(view);
+// ═══════════════════ APPLICATION STATE ═══════════════════
+const INITIAL_TABLES = [
+  { id: 1, name: "Table 1", capacity: "2 Guests", location: "Indoor Window", status: "available", currentOrderId: null },
+  { id: 2, name: "Table 2", capacity: "4 Guests", location: "Cozy Booth", status: "preparing", currentOrderId: null },
+  { id: 3, name: "Table 3", capacity: "2 Guests", location: "Dining Room", status: "available", currentOrderId: null },
+  { id: 4, name: "Table 4", capacity: "4 Guests", location: "Patio Garden", status: "available", currentOrderId: null },
+  { id: 5, name: "Table 5", capacity: "6 Guests", location: "Family Dining", status: "preparing", currentOrderId: null },
+  { id: 6, name: "Table 6", capacity: "1 Guest", location: "Chef Counter", status: "available", currentOrderId: null },
+  { id: 7, name: "Table 7", capacity: "2 Guests", location: "High Top", status: "available", currentOrderId: null },
+  { id: 8, name: "Table 8", capacity: "4 Guests", location: "Private Booth", status: "available", currentOrderId: null },
+];
+
+const state = {
+  activeCategory: "All Items",
+  activeSort: "popular", // popular | price-low | price-high | rating
+  searchTerm: "",
+  favorites: new Set(["bg-1", "bg-2", "bg-5", "ms-1"]),
+  selectedTable: 1, // 1 to 8 or "takeout"
+  floorFilter: "all",
+  cart: [
+    { itemId: "bg-1", qty: 1, spice: "Mild", extras: [{ name: "Cheddar Slice", price: 1.00 }], notes: "Extra crispy edges", unitPrice: 9.99 },
+    { itemId: "bg-5", qty: 1, spice: "Shichimi 🔥", extras: [], notes: "", unitPrice: 12.49 },
+    { itemId: "bg-4", qty: 1, spice: "Mild", extras: [], notes: "Less ice please", unitPrice: 4.49 },
+  ],
+  orders: {}, // orderId -> { id, tableId, items, status, createdAt, total, subtotal, tax }
+  tables: JSON.parse(JSON.stringify(INITIAL_TABLES)),
+  history: [],
+  kdsFilter: "all",
+  activeStaffView: "kitchen",
+};
+
+// Seed baseline demo orders if none exist
+function seedBaselineOrders() {
+  if (Object.keys(state.orders).length === 0) {
+    const o1 = genId();
+    state.orders[o1] = {
+      id: o1,
+      tableId: 2,
+      status: "in-preparation",
+      createdAt: Date.now() - 480000,
+      items: [
+        { name: "Cheesy Beef Burger", qty: 1, price: 9.99, spice: "Mild", extras: [{ name: "Cheddar Slice", price: 1.00 }], notes: "Medium rare" },
+        { name: "Loaded Fries", qty: 1, price: 6.49, spice: "Mild", extras: [], notes: "Extra jalapeños" },
+      ],
+      subtotal: 16.48,
+      tax: 1.44,
+      total: 17.92,
+    };
+    state.tables[1].status = "preparing";
+    state.tables[1].currentOrderId = o1;
+
+    const o2 = genId();
+    state.orders[o2] = {
+      id: o2,
+      tableId: 5,
+      status: "queued",
+      createdAt: Date.now() - 120000,
+      items: [
+        { name: "Pepperoni Supreme", qty: 1, price: 12.49, spice: "Mild", extras: [], notes: "" },
+        { name: "Cold Brew Cooler", qty: 2, price: 4.49, spice: "Mild", extras: [], notes: "Oat milk" },
+      ],
+      subtotal: 21.47,
+      tax: 1.88,
+      total: 23.35,
+    };
+    state.tables[4].status = "preparing";
+    state.tables[4].currentOrderId = o2;
+  }
+}
+
+// ═══════════════════ LOCAL STORAGE PERSISTENCE ═══════════════════
+function saveState() {
+  try {
+    const payload = {
+      orders: state.orders,
+      tables: state.tables,
+      history: state.history,
+      cart: state.cart,
+      selectedTable: state.selectedTable,
+      favorites: Array.from(state.favorites),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn("Could not save to localStorage", err);
+  }
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      seedBaselineOrders();
+      return false;
     }
-  });
-
-  const initialView = window.location.hash.replace("#", "");
-  if (["tables", "kitchen", "bills", "history"].includes(initialView)) {
-    switchToView(initialView);
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      if (parsed.orders && typeof parsed.orders === "object") state.orders = parsed.orders;
+      if (Array.isArray(parsed.tables) && parsed.tables.length === 8) state.tables = parsed.tables;
+      if (Array.isArray(parsed.history)) state.history = parsed.history;
+      if (Array.isArray(parsed.cart)) state.cart = parsed.cart;
+      if (parsed.selectedTable !== undefined) state.selectedTable = parsed.selectedTable;
+      if (Array.isArray(parsed.favorites)) state.favorites = new Set(parsed.favorites);
+      return true;
+    }
+  } catch (err) {
+    console.warn("Error loading state from localStorage, falling back to defaults", err);
+    seedBaselineOrders();
   }
-
-  const soundBtn = $("#sound-toggle");
-  if (soundBtn) {
-    soundBtn.addEventListener("click", () => SoundSynth.toggle());
-  }
+  return false;
 }
 
-function switchToView(viewName) {
-  $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === viewName));
-  $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${viewName}`));
-  render();
-}
-
-// ═══════════════════ MASTER RENDER ═══════════════════
-function render() {
-  updateNavBadges();
-  renderTables();
-  renderMenu();
-  renderTicket();
-  renderKDS();
-  renderBills();
-  renderHistory();
-}
-
-function updateNavBadges() {
-  // KDS active count
-  const kdsCount = Object.values(state.orders).filter(
-    (o) => o.status === "queued" || o.status === "in-preparation" || o.status === "ready"
-  ).length;
-  const kdsBadge = $("#nav-kds-badge");
-  if (kdsBadge) {
-    kdsBadge.textContent = kdsCount;
-    kdsBadge.classList.toggle("zero", kdsCount === 0);
+// Multi-Tab Synchronization
+window.addEventListener("storage", (e) => {
+  if (e.key === STORAGE_KEY && e.newValue) {
+    try {
+      const parsed = JSON.parse(e.newValue);
+      if (parsed) {
+        if (parsed.orders) state.orders = parsed.orders;
+        if (parsed.tables) state.tables = parsed.tables;
+        if (parsed.history) state.history = parsed.history;
+        if (parsed.cart) state.cart = parsed.cart;
+        if (parsed.selectedTable !== undefined) state.selectedTable = parsed.selectedTable;
+        if (parsed.favorites) state.favorites = new Set(parsed.favorites);
+        renderAll();
+      }
+    } catch (err) {}
   }
+});
 
-  // Bills awaiting checkout count
-  const billsCount = Object.values(state.orders).filter((o) => o.status === "served").length;
-  const billsBadge = $("#nav-bills-badge");
-  if (billsBadge) {
-    billsBadge.textContent = billsCount;
-    billsBadge.classList.toggle("zero", billsCount === 0);
-  }
-}
+// ═══════════════════ TABLE STATUS SYNCHRONIZATION ═══════════════════
+function syncTableStatuses() {
+  const activeOrders = Object.values(state.orders);
 
-// ─── 1. TABLES & FLOOR PLAN ───
-function renderTables() {
-  const grid = $("#table-grid");
-  if (!grid) return;
-  grid.innerHTML = "";
+  state.tables.forEach((table) => {
+    const tableOrders = activeOrders.filter((o) => o.tableId === table.id);
 
-  // Update counts in filter pills
-  const counts = { available: 0, preparing: 0, ready: 0, served: 0 };
-  state.tables.forEach((t) => {
-    if (counts[t.status] !== undefined) counts[t.status]++;
-  });
-
-  const cAvail = $("#count-avail");
-  const cPrep = $("#count-prep");
-  const cReady = $("#count-ready");
-  const cServed = $("#count-served");
-  if (cAvail) cAvail.textContent = counts.available;
-  if (cPrep) cPrep.textContent = counts.preparing;
-  if (cReady) cReady.textContent = counts.ready;
-  if (cServed) cServed.textContent = counts.served;
-
-  // Table selection hint badge
-  const selHint = $("#table-selection-status");
-  if (selHint) {
-    if (state.selectedTable) {
-      const tbl = state.tables[state.selectedTable - 1];
-      selHint.textContent = `Table ${tbl.id} Selected (${tbl.status.toUpperCase()})`;
+    if (tableOrders.length === 0) {
+      table.status = "available";
+      table.currentOrderId = null;
     } else {
-      selHint.textContent = "Click a table to begin";
+      // Prioritize active order statuses
+      const hasPrep = tableOrders.some((o) => o.status === "queued" || o.status === "in-preparation");
+      const hasReady = tableOrders.some((o) => o.status === "ready");
+      const hasServed = tableOrders.some((o) => o.status === "served");
+
+      if (hasPrep) {
+        table.status = "preparing";
+      } else if (hasReady) {
+        table.status = "ready";
+      } else if (hasServed) {
+        table.status = "served";
+      }
+      table.currentOrderId = tableOrders[0].id;
     }
-  }
-
-  // Render cards
-  state.tables.forEach((tbl) => {
-    const card = document.createElement("div");
-    const isSelected = state.selectedTable === tbl.id;
-    const isDimmed = state.tableFilter !== "all" && tbl.status !== state.tableFilter;
-
-    card.className = `table-card${isSelected ? " selected" : ""}${isDimmed ? " dimmed" : ""}`;
-    card.dataset.status = tbl.status;
-    card.id = `table-card-${tbl.id}`;
-
-    const icons = {
-      available: "🟢",
-      ordering: "📝",
-      preparing: "🔥",
-      ready: "✅",
-      served: "🍽️",
-    };
-    const labels = {
-      available: "Available",
-      ordering: "Ordering",
-      preparing: "Preparing",
-      ready: "Ready",
-      served: "Served",
-    };
-
-    card.innerHTML = `
-      <span class="table-icon">${icons[tbl.status]}</span>
-      <div class="table-num">Table ${tbl.id}</div>
-      <div class="table-status">${labels[tbl.status]}</div>
-    `;
-
-    card.addEventListener("click", () => {
-      SoundSynth.playTap();
-      selectTable(tbl.id);
-    });
-
-    grid.appendChild(card);
-  });
-}
-
-function initTableFilters() {
-  $$(".legend-filter-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      SoundSynth.playClick();
-      $$(".legend-filter-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.tableFilter = btn.dataset.filter;
-      renderTables();
-    });
   });
 }
 
 function selectTable(tableId) {
-  const tbl = state.tables[tableId - 1];
-  state.selectedTable = tableId;
+  state.selectedTable = tableId === "takeout" ? "takeout" : Number(tableId);
 
-  if (!state.draftItems[tableId]) {
-    state.draftItems[tableId] = [];
-  }
+  // Update Active Table Banner on menu
+  const bannerName = $("#active-table-display");
+  const bannerChip = $("#active-table-status-pill");
+  const cartSelect = $("#cart-table-select");
 
-  // If table is available, place into ordering mode
-  if (tbl.status === "available") {
-    tbl.status = "ordering";
-  }
-
-  render();
-}
-
-// ─── 2. DIGITAL MENU & CUSTOMIZATION ───
-function renderMenu() {
-  const tabsEl = $("#menu-category-tabs");
-  const itemsEl = $("#menu-items");
-  const hint = $("#menu-empty-hint");
-  const targetLabel = $("#menu-target-table");
-
-  if (!tabsEl || !itemsEl || !hint) return;
-  tabsEl.innerHTML = "";
-  itemsEl.innerHTML = "";
-
-  if (!state.selectedTable) {
-    hint.classList.remove("hidden");
-    if (targetLabel) targetLabel.textContent = "—";
-    return;
-  }
-
-  hint.classList.add("hidden");
-  if (targetLabel) targetLabel.textContent = `Ordering for Table ${state.selectedTable}`;
-
-  // Category navigation tabs
-  CATEGORIES.forEach((cat) => {
-    const btn = document.createElement("button");
-    btn.className = `cat-tab${cat === state.activeMenuCategory ? " active" : ""}`;
-    btn.textContent = cat;
-    btn.id = `cat-tab-${cat.toLowerCase()}`;
-    btn.addEventListener("click", () => {
-      SoundSynth.playClick();
-      state.activeMenuCategory = cat;
-      renderMenu();
-    });
-    tabsEl.appendChild(btn);
-  });
-
-  // Filtered menu items
-  const items = MENU.filter((i) => i.category === state.activeMenuCategory);
-  items.forEach((item) => {
-    const card = document.createElement("div");
-    card.className = "menu-card";
-    card.id = `menu-item-${item.id}`;
-    card.innerHTML = `
-      <span class="item-emoji">${item.emoji}</span>
-      <span class="item-name">${item.name}</span>
-      <span class="item-cat">${item.category}</span>
-      <span class="item-price">${formatCurrency(item.price)}</span>
-    `;
-    card.addEventListener("click", () => {
-      SoundSynth.playClick();
-      openItemModal(item);
-    });
-    itemsEl.appendChild(card);
-  });
-}
-
-// ─── ITEM CUSTOMIZATION MODAL ───
-let modalItem = null;
-let modalQty = 1;
-
-function openItemModal(item) {
-  if (!state.selectedTable) {
-    showToast("Please select a table on the floor plan first!", "warn");
-    return;
-  }
-  const tbl = state.tables[state.selectedTable - 1];
-  if (tbl.status !== "ordering" && tbl.status !== "available") {
-    showToast(`Table ${tbl.id} already has an active order (${tbl.status.toUpperCase()}).`, "warn");
-    return;
-  }
-
-  modalItem = item;
-  modalQty = 1;
-
-  $("#modal-item-name").textContent = `${item.emoji} ${item.name}`;
-  $("#modal-item-price").textContent = formatCurrency(item.price);
-  $("#qty-value").textContent = modalQty;
-
-  // Reset defaults
-  const mildRadio = document.querySelector('input[name="spice"][value="Mild"]');
-  if (mildRadio) mildRadio.checked = true;
-  $$('#extras-group input[type="checkbox"]').forEach((cb) => (cb.checked = false));
-  $("#kitchen-notes").value = "";
-
-  $("#modal-overlay").classList.add("open");
-}
-
-function closeModal() {
-  $("#modal-overlay").classList.remove("open");
-  modalItem = null;
-}
-
-function initModal() {
-  $("#modal-close").addEventListener("click", () => {
-    SoundSynth.playClick();
-    closeModal();
-  });
-
-  $("#modal-overlay").addEventListener("click", (e) => {
-    if (e.target === e.currentTarget) {
-      SoundSynth.playClick();
-      closeModal();
+  if (state.selectedTable === "takeout") {
+    if (bannerName) bannerName.textContent = "Takeout / Food Truck Pick-up";
+    if (bannerChip) {
+      bannerChip.textContent = "Takeout";
+      bannerChip.className = "table-status-pill pill-ready";
     }
-  });
-
-  $("#qty-minus").addEventListener("click", () => {
-    SoundSynth.playClick();
-    if (modalQty > 1) {
-      modalQty--;
-      $("#qty-value").textContent = modalQty;
-    }
-  });
-
-  $("#qty-plus").addEventListener("click", () => {
-    SoundSynth.playClick();
-    if (modalQty < 20) {
-      modalQty++;
-      $("#qty-value").textContent = modalQty;
-    }
-  });
-
-  $("#btn-add-to-order").addEventListener("click", addItemToOrder);
-}
-
-function addItemToOrder() {
-  if (!modalItem || !state.selectedTable) return;
-  const tableId = state.selectedTable;
-  const tbl = state.tables[tableId - 1];
-
-  if (tbl.status === "available") tbl.status = "ordering";
-
-  const spice = document.querySelector('input[name="spice"]:checked')?.value || "Mild";
-  const extras = [];
-  $$('#extras-group input[type="checkbox"]:checked').forEach((cb) => extras.push(cb.value));
-  const notes = $("#kitchen-notes").value.trim();
-
-  if (!state.draftItems[tableId]) state.draftItems[tableId] = [];
-
-  state.draftItems[tableId].push({
-    menuId: modalItem.id,
-    name: modalItem.name,
-    price: modalItem.price,
-    qty: modalQty,
-    spice,
-    extras: [...extras],
-    notes,
-    emoji: modalItem.emoji,
-  });
-
-  SoundSynth.playItemAdded();
-  showToast(`Added ${modalQty}× ${modalItem.name} to Table ${tableId} ✨`, "success");
-  closeModal();
-  render();
-}
-
-// ─── 3. ORDER TICKET SIDEBAR ───
-function renderTicket() {
-  const label = $("#ticket-table-label");
-  const stateTag = $("#ticket-state-tag");
-  const itemsEl = $("#ticket-items");
-  const subtotalEl = $("#ticket-subtotal-value");
-  const sendBtn = $("#btn-send-kitchen");
-
-  if (!label || !itemsEl || !subtotalEl || !sendBtn) return;
-
-  if (!state.selectedTable) {
-    label.textContent = "—";
-    if (stateTag) {
-      stateTag.textContent = "Idle";
-      stateTag.className = "ticket-state-tag";
-    }
-    itemsEl.innerHTML =
-      '<p style="color:var(--text-muted);font-size:.82rem;text-align:center;margin-top:2.5rem;">Select a table on the floor plan</p>';
-    subtotalEl.textContent = "₹0.00";
-    sendBtn.disabled = true;
-    return;
-  }
-
-  const tableId = state.selectedTable;
-  const tbl = state.tables[tableId - 1];
-  label.textContent = `Table ${tableId}`;
-
-  // If table is active in kitchen or served, show read-only status
-  if (
-    tbl.currentOrderId &&
-    (tbl.status === "preparing" || tbl.status === "ready" || tbl.status === "served")
-  ) {
-    const order = state.orders[tbl.currentOrderId];
-    if (order) {
-      const statusLabels = {
-        queued: "Queued",
-        "in-preparation": "In Preparation",
-        ready: "Ready to Serve",
-        served: "Served",
-      };
-      if (stateTag) {
-        stateTag.textContent = statusLabels[order.status] || order.status;
-        stateTag.className = "ticket-state-tag active-draft";
+    if (cartSelect) cartSelect.value = "takeout";
+  } else {
+    const table = state.tables.find((t) => t.id === state.selectedTable);
+    if (table) {
+      if (bannerName) bannerName.textContent = `${table.name} (${table.location} · ${table.capacity})`;
+      if (bannerChip) {
+        bannerChip.textContent = table.status.toUpperCase();
+        bannerChip.className = `table-status-pill pill-${table.status.slice(0, 5)}`;
       }
+      if (cartSelect) cartSelect.value = String(table.id);
+    }
+  }
 
-      itemsEl.innerHTML = `
-        <div style="background:rgba(212,168,83,.08);border:1px solid rgba(212,168,83,.25);border-radius:8px;padding:.6rem .8rem;margin-bottom:.8rem;text-align:center;">
-          <div style="font-size:.72rem;color:var(--text-muted);">ACTIVE TICKET: <strong style="color:var(--text-primary);">${order.id}</strong></div>
-          <div style="font-size:.76rem;font-weight:700;color:var(--accent);margin-top:.15rem;">STATUS: ${statusLabels[order.status] || order.status}</div>
+  renderFloorPlan();
+  saveState();
+}
+
+// ═══════════════════ FLOOR PLAN RENDERING ═══════════════════
+function renderFloorPlan() {
+  const floorGrid = $("#floor-tables-grid");
+  const modalGrid = $("#modal-table-grid");
+  syncTableStatuses();
+
+  // Update Legend counters
+  const countAvail = state.tables.filter((t) => t.status === "available").length;
+  const countPrep = state.tables.filter((t) => t.status === "preparing").length;
+  const countReady = state.tables.filter((t) => t.status === "ready").length;
+  const countServed = state.tables.filter((t) => t.status === "served").length;
+
+  const elAvail = $("#floor-count-avail");
+  const elPrep = $("#floor-count-prep");
+  const elReady = $("#floor-count-ready");
+  const elServed = $("#floor-count-served");
+
+  if (elAvail) elAvail.textContent = countAvail;
+  if (elPrep) elPrep.textContent = countPrep;
+  if (elReady) elReady.textContent = countReady;
+  if (elServed) elServed.textContent = countServed;
+
+  // Filter tables
+  let tablesToShow = state.tables;
+  if (state.floorFilter && state.floorFilter !== "all") {
+    tablesToShow = state.tables.filter((t) => t.status === state.floorFilter);
+  }
+
+  const generateTableHtml = (t) => {
+    const isSelected = state.selectedTable === t.id;
+    const tableOrders = Object.values(state.orders).filter((o) => o.tableId === t.id);
+    const hasOrder = tableOrders.length > 0;
+    const activeOrder = tableOrders[0];
+
+    let statusPillClass = "pill-avail";
+    let statusLabel = "Available";
+    let actionBtnClass = "btn-table-order";
+    let actionBtnLabel = `+ Order for Table ${t.id}`;
+
+    if (t.status === "preparing") {
+      statusPillClass = "pill-prep";
+      statusLabel = "In Prep";
+      actionBtnClass = "btn-table-active";
+      actionBtnLabel = `👨‍🍳 View Ticket (${timeAgo(activeOrder?.createdAt)})`;
+    } else if (t.status === "ready") {
+      statusPillClass = "pill-ready";
+      statusLabel = "Ready to Serve";
+      actionBtnClass = "btn-table-active";
+      actionBtnLabel = `🛎️ Ready to Serve`;
+    } else if (t.status === "served") {
+      statusPillClass = "pill-served";
+      statusLabel = "Served / Dining";
+      actionBtnClass = "btn-table-settle";
+      actionBtnLabel = `💳 Settle Bill (${formatCurrency(activeOrder?.total)})`;
+    }
+
+    let summaryHtml = `<div class="table-order-summary">Ready for diners · No active ticket</div>`;
+    if (hasOrder && activeOrder) {
+      const itemsSnippet = activeOrder.items.map((i) => `${i.qty}x ${i.name}`).join(", ");
+      summaryHtml = `
+        <div class="table-order-summary">
+          <strong>#${activeOrder.id}:</strong> ${itemsSnippet}
+          <div class="table-order-total">Total: ${formatCurrency(activeOrder.total)}</div>
         </div>
       `;
-
-      let total = 0;
-      order.items.forEach((it) => {
-        total += it.price * it.qty;
-        const el = document.createElement("div");
-        el.className = "ticket-item";
-        el.innerHTML = `
-          <div class="ticket-item-info">
-            <div class="ticket-item-name">${it.emoji || "🍽️"} ${it.name} ×${it.qty}</div>
-            ${it.extras.length ? `<div class="ticket-item-mods">${it.extras.join(", ")}</div>` : ""}
-            ${it.notes ? `<div class="ticket-item-notes">"${it.notes}"</div>` : ""}
-          </div>
-          <div class="ticket-item-price">${formatCurrency(it.price * it.qty)}</div>
-        `;
-        itemsEl.appendChild(el);
-      });
-
-      subtotalEl.textContent = formatCurrency(total);
-      sendBtn.disabled = true;
-      return;
     }
-  }
 
-  // Draft items ticket
-  const draft = state.draftItems[tableId] || [];
-  if (stateTag) {
-    stateTag.textContent = draft.length > 0 ? "Drafting" : "Empty";
-    stateTag.className = `ticket-state-tag${draft.length > 0 ? " active-draft" : ""}`;
-  }
-
-  if (draft.length === 0) {
-    itemsEl.innerHTML =
-      '<p style="color:var(--text-muted);font-size:.82rem;text-align:center;margin-top:2.5rem;">Ticket empty — choose culinary items from the menu</p>';
-    subtotalEl.textContent = "₹0.00";
-    sendBtn.disabled = true;
-    return;
-  }
-
-  itemsEl.innerHTML = "";
-  let subtotal = 0;
-
-  draft.forEach((item, idx) => {
-    subtotal += item.price * item.qty;
-    const row = document.createElement("div");
-    row.className = "ticket-item";
-    row.innerHTML = `
-      <div class="ticket-item-info">
-        <div class="ticket-item-name">${item.emoji || "🍽️"} ${item.name}</div>
-        ${item.spice !== "Mild" ? `<div class="ticket-item-mods">🌶 ${item.spice}</div>` : ""}
-        ${item.extras.length ? `<div class="ticket-item-mods">${item.extras.join(", ")}</div>` : ""}
-        ${item.notes ? `<div class="ticket-item-notes">"${item.notes}"</div>` : ""}
-      </div>
-      <div class="ticket-item-actions">
-        <div class="ticket-qty-row">
-          <button class="ticket-qty-btn" data-action="dec" data-idx="${idx}">−</button>
-          <span class="ticket-qty-val">${item.qty}</span>
-          <button class="ticket-qty-btn" data-action="inc" data-idx="${idx}">+</button>
+    return `
+      <div class="floor-table-card${isSelected ? " selected-table" : ""}" data-table-id="${t.id}">
+        <div class="table-card-top">
+          <div class="table-num-wrap">
+            <span class="table-num-title">${t.name}</span>
+            <span class="table-capacity-tag">${t.capacity}</span>
+          </div>
+          <span class="table-status-pill ${statusPillClass}">● ${statusLabel}</span>
         </div>
-        <button class="ticket-remove-btn" data-idx="${idx}">Remove</button>
+        <div class="table-card-body">
+          <div style="font-size:0.75rem; color:#888; margin-bottom:4px;">📍 ${t.location}</div>
+          ${summaryHtml}
+        </div>
+        <button class="table-btn-action ${actionBtnClass}" data-action-table="${t.id}" data-status="${t.status}">
+          ${actionBtnLabel}
+        </button>
       </div>
-      <div class="ticket-item-price">${formatCurrency(item.price * item.qty)}</div>
     `;
-
-    // Quantity modifiers
-    row.querySelector('[data-action="dec"]').addEventListener("click", () => {
-      SoundSynth.playClick();
-      if (draft[idx].qty > 1) {
-        draft[idx].qty--;
-      } else {
-        draft.splice(idx, 1);
-      }
-      if (draft.length === 0 && state.tables[tableId - 1].status === "ordering") {
-        state.tables[tableId - 1].status = "available";
-      }
-      render();
-    });
-
-    row.querySelector('[data-action="inc"]').addEventListener("click", () => {
-      SoundSynth.playClick();
-      if (draft[idx].qty < 20) draft[idx].qty++;
-      render();
-    });
-
-    row.querySelector(".ticket-remove-btn").addEventListener("click", () => {
-      SoundSynth.playClick();
-      draft.splice(idx, 1);
-      if (draft.length === 0 && state.tables[tableId - 1].status === "ordering") {
-        state.tables[tableId - 1].status = "available";
-      }
-      render();
-    });
-
-    itemsEl.appendChild(row);
-  });
-
-  subtotalEl.textContent = formatCurrency(subtotal);
-  sendBtn.disabled = draft.length === 0;
-}
-
-function initTicket() {
-  const sendBtn = $("#btn-send-kitchen");
-  if (sendBtn) {
-    sendBtn.addEventListener("click", sendToKitchen);
-  }
-}
-
-function sendToKitchen() {
-  const tableId = state.selectedTable;
-  if (!tableId) return;
-  const draft = state.draftItems[tableId];
-  if (!draft || draft.length === 0) return;
-
-  const tbl = state.tables[tableId - 1];
-  const orderId = genId();
-
-  state.orders[orderId] = {
-    id: orderId,
-    tableId,
-    items: JSON.parse(JSON.stringify(draft)),
-    status: "queued",
-    createdAt: Date.now(),
   };
 
-  tbl.status = "preparing";
-  tbl.currentOrderId = orderId;
-  delete state.draftItems[tableId];
+  const html = tablesToShow.map(generateTableHtml).join("");
+  if (floorGrid) floorGrid.innerHTML = html;
+  if (modalGrid) modalGrid.innerHTML = html;
 
-  SoundSynth.playOrderSent();
-  showToast(`Order ${orderId} fired to Kitchen for Table ${tableId}! 🔥`, "success");
-  render();
+  attachFloorTableEvents();
 }
 
-// ─── 4. KITCHEN DISPLAY SYSTEM (KDS) ───
-function renderKDS() {
-  const board = $("#kds-board");
-  const empty = $("#kds-empty");
-  if (!board || !empty) return;
-  board.innerHTML = "";
-
-  const allActiveOrders = Object.values(state.orders).filter(
-    (o) => o.status === "queued" || o.status === "in-preparation" || o.status === "ready"
-  );
-
-  // Update KDS filter counts
-  const kdsCounts = { all: allActiveOrders.length, queued: 0, "in-preparation": 0, ready: 0 };
-  allActiveOrders.forEach((o) => {
-    if (kdsCounts[o.status] !== undefined) kdsCounts[o.status]++;
-  });
-
-  const kAll = $("#kds-count-all");
-  const kQueued = $("#kds-count-queued");
-  const kPrep = $("#kds-count-prep");
-  const kReady = $("#kds-count-ready");
-  if (kAll) kAll.textContent = kdsCounts.all;
-  if (kQueued) kQueued.textContent = kdsCounts.queued;
-  if (kPrep) kPrep.textContent = kdsCounts["in-preparation"];
-  if (kReady) kReady.textContent = kdsCounts.ready;
-
-  // Filter based on selected filter
-  let displayedOrders = allActiveOrders;
-  if (state.kdsFilter !== "all") {
-    displayedOrders = allActiveOrders.filter((o) => o.status === state.kdsFilter);
-  }
-
-  // Sort: queued first, in-prep second, ready third; oldest first
-  const statusPriority = { queued: 0, "in-preparation": 1, ready: 2 };
-  displayedOrders.sort(
-    (a, b) => statusPriority[a.status] - statusPriority[b.status] || a.createdAt - b.createdAt
-  );
-
-  if (displayedOrders.length === 0) {
-    empty.classList.remove("hidden");
-    return;
-  }
-  empty.classList.add("hidden");
-
-  displayedOrders.forEach((order) => {
-    const elapsed = Math.floor((Date.now() - order.createdAt) / 1000);
-    let urgency = "";
-    if (elapsed > 1200) urgency = "critical";
-    else if (elapsed > 600) urgency = "warn";
-
-    const badgeMap = {
-      queued: { label: "Queued", cls: "queued" },
-      "in-preparation": { label: "In Preparation", cls: "in-prep" },
-      ready: { label: "Ready to Serve", cls: "ready" },
-    };
-    const badgeInfo = badgeMap[order.status] || { label: order.status, cls: "" };
-
-    const card = document.createElement("div");
-    card.className = "kds-ticket";
-    card.id = `kds-${order.id}`;
-    if (urgency) card.dataset.urgency = urgency;
-
-    let itemsHTML = "";
-    order.items.forEach((it) => {
-      const mods = [];
-      if (it.spice && it.spice !== "Mild") mods.push(`🌶 ${it.spice}`);
-      if (it.extras && it.extras.length) mods.push(...it.extras);
-
-      itemsHTML += `
-        <div class="kds-item">
-          <span class="kds-item-qty">${it.qty}×</span>
-          <div class="kds-item-details">
-            <div class="kds-item-name">${it.emoji || "🍽️"} ${it.name}</div>
-            ${mods.length ? `<div class="kds-item-mods">⚠ ${mods.join(" · ")}</div>` : ""}
-            ${it.notes ? `<div class="kds-item-notes">📝 "${it.notes}"</div>` : ""}
-          </div>
-        </div>
-      `;
-    });
-
-    let actionsHTML = "";
-    if (order.status === "queued") {
-      actionsHTML = `<button class="btn-sm btn-warning kds-action" data-order="${order.id}" data-action="start">▶ Start Preparing</button>`;
-    } else if (order.status === "in-preparation") {
-      actionsHTML = `<button class="btn-sm btn-success kds-action" data-order="${order.id}" data-action="ready">✅ Mark Ready</button>`;
-    } else if (order.status === "ready") {
-      actionsHTML = `<button class="btn-sm btn-teal kds-action" data-order="${order.id}" data-action="served">🍽️ Mark Served</button>`;
-    }
-
-    card.innerHTML = `
-      <div class="kds-ticket-header">
-        <div class="kds-ticket-header-left">
-          <span class="kds-order-id">${order.id}</span>
-          <span class="kds-table-num">Table ${order.tableId}</span>
-        </div>
-        <div style="text-align:right">
-          <span class="kds-badge ${badgeInfo.cls}">${badgeInfo.label}</span>
-          <div class="kds-time">${timeAgo(order.createdAt)}</div>
-        </div>
-      </div>
-      <div class="kds-ticket-body">${itemsHTML}</div>
-      <div class="kds-ticket-actions">${actionsHTML}</div>
-    `;
-
-    board.appendChild(card);
-  });
-
-  // Action listeners
-  $$(".kds-action").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const orderId = btn.dataset.order;
-      const action = btn.dataset.action;
-      handleKDSAction(orderId, action);
-    });
-  });
-}
-
-function initKDSFilters() {
-  $$(".kds-filter-chip").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      SoundSynth.playClick();
-      $$(".kds-filter-chip").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.kdsFilter = btn.dataset.kdsFilter;
-      renderKDS();
-    });
-  });
-}
-
-function handleKDSAction(orderId, action) {
-  const order = state.orders[orderId];
-  if (!order) return;
-  const tbl = state.tables[order.tableId - 1];
-
-  switch (action) {
-    case "start":
-      order.status = "in-preparation";
-      SoundSynth.playClick();
-      showToast(`Order ${orderId} is now under active preparation 🔥`, "info");
-      break;
-    case "ready":
-      order.status = "ready";
-      tbl.status = "ready";
-      SoundSynth.playBell();
-      showToast(`Order ${orderId} (Table ${order.tableId}) is READY TO SERVE! 🛎️`, "success");
-      break;
-    case "served":
-      order.status = "served";
-      tbl.status = "served";
-      SoundSynth.playClick();
-      showToast(`Order ${orderId} served to Table ${order.tableId} 🍽️`, "success");
-      break;
-  }
-  render();
-}
-
-// ─── 5. BILLS & GUEST SETTLEMENT ───
-function renderBills() {
-  const container = $("#bills-container");
-  const empty = $("#bills-empty");
-  if (!container || !empty) return;
-  container.innerHTML = "";
-
-  const servedOrders = Object.values(state.orders).filter((o) => o.status === "served");
-
-  if (servedOrders.length === 0) {
-    empty.classList.remove("hidden");
-    return;
-  }
-  empty.classList.add("hidden");
-
-  servedOrders.forEach((order) => {
-    const isServiceEnabled = state.serviceChargeEnabled[order.id] ?? false;
-
-    let subtotal = 0;
-    let itemsHTML = "";
-    order.items.forEach((it) => {
-      const lineTotal = it.price * it.qty;
-      subtotal += lineTotal;
-      itemsHTML += `
-        <div class="bill-line item-line">
-          <span class="bill-item-name">${it.emoji || "🍽️"} ${it.name} ×${it.qty}</span>
-          <span>${formatCurrency(lineTotal)}</span>
-        </div>
-      `;
-    });
-
-    const tax = subtotal * TAX_RATE;
-    const service = isServiceEnabled ? subtotal * SERVICE_RATE : 0;
-    const grandTotal = subtotal + tax + service;
-
-    const card = document.createElement("div");
-    card.className = "bill-card";
-    card.id = `bill-${order.id}`;
-    card.innerHTML = `
-      <div class="bill-header">
-        <div class="bill-header-left">
-          <span class="bill-table-name">🪑 Table ${order.tableId}</span>
-          <span class="bill-order-id">${order.id} · ${formatDate(order.createdAt)}</span>
-        </div>
-      </div>
-      <div class="bill-body">
-        ${itemsHTML}
-        <hr class="bill-divider" />
-        <div class="bill-line subtotal">
-          <span>Subtotal</span>
-          <span>${formatCurrency(subtotal)}</span>
-        </div>
-        <div class="bill-line tax">
-          <span>GST (5%)</span>
-          <span>${formatCurrency(tax)}</span>
-        </div>
-        <label class="bill-service-toggle">
-          <input type="checkbox" ${isServiceEnabled ? "checked" : ""} data-order="${order.id}" class="service-toggle" />
-          Service Charge (10%)
-        </label>
-        ${
-          isServiceEnabled
-            ? `
-        <div class="bill-line service">
-          <span>Service Charge</span>
-          <span>${formatCurrency(service)}</span>
-        </div>`
-            : ""
-        }
-        <hr class="bill-divider" />
-        <div class="bill-line grand-total">
-          <span>Grand Total</span>
-          <span>${formatCurrency(grandTotal)}</span>
-        </div>
-      </div>
-      <div class="bill-card-actions">
-        <button class="btn-sm btn-success settle-btn" data-order="${order.id}" data-total="${grandTotal.toFixed(2)}">
-          💳 Settle Bill &amp; Free Table
-        </button>
-        <button class="btn-receipt-view" data-order="${order.id}">
-          🧾 View Guest Check
-        </button>
-      </div>
-    `;
-
-    container.appendChild(card);
-  });
-
-  // Service charge checkboxes
-  $$(".service-toggle").forEach((toggle) => {
-    toggle.addEventListener("change", (e) => {
-      SoundSynth.playClick();
-      const orderId = e.target.dataset.order;
-      state.serviceChargeEnabled[orderId] = e.target.checked;
-      renderBills();
-    });
-  });
-
-  // Settle buttons
-  $$(".settle-btn").forEach((btn) => {
+function attachFloorTableEvents() {
+  $$("[data-action-table]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      const rect = btn.getBoundingClientRect();
-      ConfettiEngine.burst(rect.left + rect.width / 2, rect.top);
-      settleBill(btn.dataset.order, parseFloat(btn.dataset.total));
-    });
-  });
+      e.stopPropagation();
+      const tId = parseInt(btn.dataset.actionTable, 10);
+      const status = btn.dataset.status;
 
-  // Receipt preview buttons
-  $$(".btn-receipt-view").forEach((btn) => {
-    btn.addEventListener("click", () => {
+      if (status === "served") {
+        // Open bill settlement for this table
+        const order = Object.values(state.orders).find((o) => o.tableId === tId && o.status === "served");
+        if (order) {
+          settleBill(order.id);
+          return;
+        }
+      }
+
+      if (status === "preparing" || status === "ready") {
+        toggleStaffMode();
+        return;
+      }
+
+      // Select table and scroll to menu
+      selectTable(tId);
       SoundSynth.playClick();
-      const order = state.orders[btn.dataset.order];
-      if (order) openReceiptModal(order);
+      showToast(`Ordering for Table ${tId}! Browse menu below 🍽️`, "info");
+      const menuSection = $("#menu");
+      if (menuSection) menuSection.scrollIntoView({ behavior: "smooth" });
+    });
+  });
+
+  $$(".floor-table-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const tId = parseInt(card.dataset.tableId, 10);
+      selectTable(tId);
+      SoundSynth.playTap();
+    });
+  });
+
+  // Table filter chips
+  $$("[data-floor-filter]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      SoundSynth.playClick();
+      $$("[data-floor-filter]").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      state.floorFilter = chip.dataset.floorFilter;
+      renderFloorPlan();
     });
   });
 }
 
-function settleBill(orderId, total) {
-  const order = state.orders[orderId];
-  if (!order) return;
-  const tbl = state.tables[order.tableId - 1];
+// ═══════════════════ PRODUCT GRID RENDERING ═══════════════════
+function renderProductGrid() {
+  const gridEl = $("#food-cards-grid");
+  const countEl = $("#menu-total-count");
+  const emptyState = $("#menu-empty-state");
+  if (!gridEl) return;
 
-  // Archive to Order History
-  state.history.unshift({
-    id: order.id,
-    tableId: order.tableId,
-    items: order.items.map((i) => ({
-      name: i.name,
-      qty: i.qty,
-      price: i.price,
-      spice: i.spice,
-      extras: i.extras,
-    })),
-    total,
-    completedAt: Date.now(),
-    status: "completed",
-  });
+  // 1. Filter by category
+  let items = state.activeCategory === "All Items"
+    ? [...MENU_ITEMS]
+    : MENU_ITEMS.filter((i) => i.category === state.activeCategory);
 
-  // Reset table
-  tbl.status = "available";
-  tbl.currentOrderId = null;
+  // 2. Filter by search term
+  if (state.searchTerm && state.searchTerm.trim()) {
+    const term = state.searchTerm.toLowerCase().trim();
+    items = items.filter((i) =>
+      i.name.toLowerCase().includes(term) ||
+      (i.desc && i.desc.toLowerCase().includes(term)) ||
+      i.category.toLowerCase().includes(term)
+    );
+  }
 
-  // Cleanup active maps
-  delete state.orders[orderId];
-  delete state.serviceChargeEnabled[orderId];
-  delete state.draftItems[order.tableId];
+  // 3. Sort items
+  if (state.activeSort === "popular") {
+    items.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  } else if (state.activeSort === "price-low") {
+    items.sort((a, b) => a.price - b.price);
+  } else if (state.activeSort === "price-high") {
+    items.sort((a, b) => b.price - a.price);
+  } else if (state.activeSort === "rating") {
+    items.sort((a, b) => b.rating - a.rating);
+  }
 
-  SoundSynth.playSettleCash();
-  showToast(
-    `Payment settled for Table ${order.tableId} (${formatCurrency(total)}). Table is now Available! ✨`,
-    "success"
-  );
-  render();
+  if (countEl) countEl.textContent = state.activeCategory === "All Items" && !state.searchTerm ? "78" : items.length;
+
+  if (items.length === 0) {
+    gridEl.innerHTML = "";
+    if (emptyState) emptyState.classList.remove("hidden");
+    return;
+  }
+
+  if (emptyState) emptyState.classList.add("hidden");
+
+  // 4-column cards
+  gridEl.innerHTML = items.map((item) => {
+    const isFav = state.favorites.has(item.id);
+    const badgeHtml = item.badge
+      ? `<span class="product-badge">${item.badge}</span>`
+      : `<span class="badge-spacer"></span>`;
+
+    return `
+      <div class="product-card" data-id="${item.id}">
+        <div class="product-card-top">
+          ${badgeHtml}
+          <button class="btn-fav${isFav ? " active" : ""}" data-fav-id="${item.id}" aria-label="Favorite ${item.name}" title="Toggle Favorite">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="product-img-wrap" data-action="custom" data-id="${item.id}">
+          <img src="${item.image}" alt="${item.name}" class="product-img" loading="lazy" />
+        </div>
+
+        <h3 class="product-name" data-action="custom" data-id="${item.id}">${item.name}</h3>
+        <p class="product-desc">${item.desc}</p>
+
+        <div class="product-meta-row">
+          <span class="product-rating">
+            <span class="star-icon">★</span>
+            <span>${item.rating}</span>
+            <span class="review-count">(${item.reviews})</span>
+          </span>
+          <span class="product-time">
+            <span class="clock-icon">🕒</span>
+            <span>${item.prepTime}</span>
+          </span>
+        </div>
+
+        <div class="product-bottom-row">
+          <span class="product-price">${formatCurrency(item.price)}</span>
+          <button class="btn-add-circle" data-action="quick-add" data-id="${item.id}" aria-label="Add ${item.name} to cart" title="Add to Cart">+</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  attachCardEvents();
 }
 
-// ─── GUEST RECEIPT MODAL ───
-function openReceiptModal(orderRecord) {
+function attachCardEvents() {
+  $$(".btn-fav").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      SoundSynth.playClick();
+      const id = btn.dataset.favId;
+      if (state.favorites.has(id)) {
+        state.favorites.delete(id);
+        btn.classList.remove("active");
+        showToast("Removed from favorites", "info");
+      } else {
+        state.favorites.add(id);
+        btn.classList.add("active");
+        showToast("Added to favorites! ❤️", "success");
+      }
+      saveState();
+    });
+  });
+
+  $$(".btn-add-circle").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const item = MENU_ITEMS.find((m) => m.id === id);
+      if (!item) return;
+
+      SoundSynth.playItemAdded();
+      addToCart(item.id, 1, "Mild", [], "", item.price);
+      showToast(`Added ${item.name} to order! 🛍️`, "success");
+    });
+  });
+
+  $$("[data-action='custom']").forEach((el) => {
+    el.addEventListener("click", () => {
+      const id = el.dataset.id;
+      const item = MENU_ITEMS.find((m) => m.id === id);
+      if (item) openItemModal(item);
+    });
+  });
+}
+
+// ═══════════════════ CART SYSTEM & DRAWER ═══════════════════
+function addToCart(itemId, qty = 1, spice = "Mild", extras = [], notes = "", unitPrice = null) {
+  const item = MENU_ITEMS.find((m) => m.id === itemId);
+  if (!item) return;
+
+  const extrasCost = extras.reduce((sum, e) => sum + (e.price || 0), 0);
+  const finalUnitPrice = unitPrice !== null ? unitPrice : (item.price + extrasCost);
+
+  // Check if identical customization already exists in cart
+  const extrasKey = extras.map((e) => e.name).sort().join("|");
+  const existing = state.cart.find((c) =>
+    c.itemId === itemId &&
+    c.spice === spice &&
+    c.notes === notes &&
+    (c.extras || []).map((e) => e.name).sort().join("|") === extrasKey
+  );
+
+  if (existing) {
+    existing.qty += qty;
+  } else {
+    state.cart.push({
+      itemId,
+      qty,
+      spice,
+      extras,
+      notes,
+      unitPrice: finalUnitPrice,
+    });
+  }
+
+  updateCartBadge();
+  renderCartDrawer();
+  saveState();
+}
+
+function removeFromCart(index) {
+  state.cart.splice(index, 1);
+  updateCartBadge();
+  renderCartDrawer();
+  SoundSynth.playClick();
+  saveState();
+}
+
+function updateCartQty(index, delta) {
+  if (!state.cart[index]) return;
+  state.cart[index].qty += delta;
+  if (state.cart[index].qty <= 0) {
+    removeFromCart(index);
+    return;
+  }
+  SoundSynth.playClick();
+  updateCartBadge();
+  renderCartDrawer();
+  saveState();
+}
+
+function updateCartBadge() {
+  const totalQty = state.cart.reduce((sum, item) => sum + item.qty, 0);
+  const badge = $("#cart-badge-count");
+  const drawerCount = $("#cart-drawer-count");
+
+  if (badge) {
+    badge.textContent = totalQty;
+    badge.style.display = totalQty > 0 ? "flex" : "none";
+  }
+  if (drawerCount) {
+    drawerCount.textContent = `${totalQty} item${totalQty === 1 ? "" : "s"}`;
+  }
+}
+
+function renderCartDrawer() {
+  const listEl = $("#cart-items-list");
+  const emptyEl = $("#cart-empty-message");
+  const footerEl = $("#cart-drawer-footer");
+  const subtotalEl = $("#cart-subtotal-val");
+  const taxEl = $("#cart-tax-val");
+  const totalEl = $("#cart-total-val");
+  const checkoutLabel = $("#btn-checkout-label");
+
+  if (!listEl) return;
+
+  // Sync Cart dropdown value with state.selectedTable
+  const cartSelect = $("#cart-table-select");
+  if (cartSelect) {
+    cartSelect.value = state.selectedTable === "takeout" ? "takeout" : String(state.selectedTable);
+  }
+
+  if (state.cart.length === 0) {
+    listEl.innerHTML = "";
+    if (emptyEl) emptyEl.classList.remove("hidden");
+    if (footerEl) footerEl.style.display = "none";
+    return;
+  }
+
+  if (emptyEl) emptyEl.classList.add("hidden");
+  if (footerEl) footerEl.style.display = "flex";
+
+  let subtotal = 0;
+
+  listEl.innerHTML = state.cart.map((entry, idx) => {
+    const item = MENU_ITEMS.find((m) => m.id === entry.itemId);
+    if (!item) return "";
+
+    const lineTotal = entry.unitPrice * entry.qty;
+    subtotal += lineTotal;
+
+    const extrasSnippet = (entry.extras || []).map((e) => `+ ${e.name} (${formatCurrency(e.price)})`).join(", ");
+    const metaParts = [];
+    if (entry.spice) metaParts.push(entry.spice);
+    if (extrasSnippet) metaParts.push(extrasSnippet);
+    if (entry.notes) metaParts.push(`"${entry.notes}"`);
+
+    return `
+      <div class="cart-item-row">
+        <img src="${item.image}" alt="${item.name}" class="cart-item-thumb" />
+        <div class="cart-item-info">
+          <span class="cart-item-name">${item.name}</span>
+          <span class="cart-item-meta">${metaParts.join(" · ") || "Standard preparation"}</span>
+          <span class="cart-item-price">${formatCurrency(lineTotal)} <small style="font-weight:400; color:#888;">(${formatCurrency(entry.unitPrice)} ea)</small></span>
+        </div>
+        <div class="cart-stepper">
+          <button class="cart-step-btn" data-cart-idx="${idx}" data-delta="-1" aria-label="Decrease quantity">−</button>
+          <span class="cart-step-val">${entry.qty}</span>
+          <button class="cart-step-btn" data-cart-idx="${idx}" data-delta="1" aria-label="Increase quantity">+</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const tax = subtotal * 0.0875;
+  const grandTotal = subtotal + tax;
+
+  if (subtotalEl) subtotalEl.textContent = formatCurrency(subtotal);
+  if (taxEl) taxEl.textContent = formatCurrency(tax);
+  if (totalEl) totalEl.textContent = formatCurrency(grandTotal);
+
+  if (checkoutLabel) {
+    checkoutLabel.textContent = state.selectedTable === "takeout"
+      ? "Confirm Takeout Order"
+      : `Send Order to Kitchen (Table ${state.selectedTable})`;
+  }
+
+  $$(".cart-step-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.cartIdx, 10);
+      const delta = parseInt(btn.dataset.delta, 10);
+      updateCartQty(idx, delta);
+    });
+  });
+}
+
+function openCartDrawer() {
+  const drawer = $("#cart-drawer");
+  const backdrop = $("#cart-drawer-backdrop");
+  if (drawer && backdrop) {
+    SoundSynth.playClick();
+    drawer.classList.add("active");
+    backdrop.classList.add("active");
+    renderCartDrawer();
+  }
+}
+
+function closeCartDrawer() {
+  const drawer = $("#cart-drawer");
+  const backdrop = $("#cart-drawer-backdrop");
+  if (drawer && backdrop) {
+    drawer.classList.remove("active");
+    backdrop.classList.remove("active");
+  }
+}
+
+// ═══════════════════ ITEM CUSTOMIZATION MODAL ═══════════════════
+let currentCustomItem = null;
+let currentCustomQty = 1;
+
+function openItemModal(item) {
+  currentCustomItem = item;
+  currentCustomQty = 1;
+
+  const overlay = $("#modal-overlay");
+  const nameEl = $("#modal-item-name");
+  const descEl = $("#modal-item-desc");
+  const priceEl = $("#modal-item-price");
+  const imgEl = $("#modal-item-img");
+  const qtyEl = $("#qty-value");
+  const notesEl = $("#kitchen-notes");
+
+  if (nameEl) nameEl.textContent = item.name;
+  if (descEl) descEl.textContent = item.desc;
+  if (priceEl) priceEl.textContent = formatCurrency(item.price);
+  if (imgEl) {
+    imgEl.src = item.image;
+    imgEl.alt = item.name;
+  }
+  if (qtyEl) qtyEl.textContent = "1";
+  if (notesEl) notesEl.value = "";
+
+  // Reset checkboxes
+  $$("#extras-group input[type='checkbox']").forEach((cb) => (cb.checked = false));
+
+  // Default mild spice
+  const mildRadio = $('input[name="spice"][value="Mild"]');
+  if (mildRadio) mildRadio.checked = true;
+
+  if (overlay) overlay.classList.add("active");
+  SoundSynth.playClick();
+}
+
+function closeItemModal() {
+  const overlay = $("#modal-overlay");
+  if (overlay) overlay.classList.remove("active");
+  currentCustomItem = null;
+}
+
+// ═══════════════════ RESERVATION MODAL ═══════════════════
+function openReservationModal() {
+  const overlay = $("#reservation-modal-overlay");
+  if (overlay) {
+    overlay.classList.add("active");
+    SoundSynth.playClick();
+
+    const dateInput = $("#res-date");
+    if (dateInput && !dateInput.value) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      dateInput.value = tomorrow.toISOString().split("T")[0];
+    }
+  }
+}
+
+function closeReservationModal() {
+  const overlay = $("#reservation-modal-overlay");
+  if (overlay) overlay.classList.remove("active");
+}
+
+// ═══════════════════ RECEIPT MODAL ═══════════════════
+function openReceiptModal(order) {
   const overlay = $("#receipt-modal-overlay");
   if (!overlay) return;
 
-  $("#rec-table").textContent = `Table ${orderRecord.tableId}`;
-  $("#rec-order").textContent = orderRecord.id;
-  $("#rec-date").textContent = formatDate(orderRecord.createdAt || orderRecord.completedAt || Date.now());
-
+  const recOrder = $("#rec-order");
+  const recTable = $("#rec-table");
+  const recDate = $("#rec-date");
   const itemsTable = $("#rec-items-table");
-  itemsTable.innerHTML = "";
-  let subtotal = 0;
+  const recSubtotal = $("#rec-subtotal");
+  const recTax = $("#rec-tax");
+  const recGrand = $("#rec-grand");
 
-  orderRecord.items.forEach((it) => {
-    const lineTotal = it.price * it.qty;
-    subtotal += lineTotal;
-    const row = document.createElement("div");
-    row.className = "rec-item-row";
-    row.innerHTML = `
-      <div class="rec-item-left">
-        <span class="rec-item-name">${it.qty}× ${it.name}</span>
-        ${it.extras && it.extras.length ? `<span class="rec-item-mods">${it.extras.join(", ")}</span>` : ""}
-      </div>
-      <span class="rec-item-price">${formatCurrency(lineTotal)}</span>
-    `;
-    itemsTable.appendChild(row);
-  });
-
-  const tax = subtotal * TAX_RATE;
-  const isServiceEnabled = state.serviceChargeEnabled[orderRecord.id] ?? false;
-  const service = isServiceEnabled ? subtotal * SERVICE_RATE : 0;
-  const grandTotal = orderRecord.total || subtotal + tax + service;
-
-  $("#rec-subtotal").textContent = formatCurrency(subtotal);
-  $("#rec-tax").textContent = formatCurrency(tax);
-
-  const serviceRow = $("#rec-service-row");
-  if (serviceRow) {
-    serviceRow.style.display = service > 0 ? "flex" : "none";
-    $("#rec-service").textContent = formatCurrency(service);
+  if (recOrder) recOrder.textContent = order.id;
+  if (recTable) {
+    recTable.textContent = order.tableId
+      ? `Table ${order.tableId} (Dine-In)`
+      : "Takeout / Food Truck Pick-up";
+  }
+  if (recDate) {
+    recDate.textContent = new Date(order.createdAt).toLocaleDateString() + " " +
+      new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  $("#rec-grand").textContent = formatCurrency(grandTotal);
+  if (itemsTable) {
+    let sub = 0;
+    itemsTable.innerHTML = order.items.map((i) => {
+      const line = i.price * i.qty;
+      sub += line;
+      const extrasStr = (i.extras || []).map((e) => `+ ${e.name}`).join(", ");
+      const customSubtext = [i.spice, extrasStr, i.notes ? `"${i.notes}"` : ""].filter(Boolean).join(" · ");
 
-  overlay.classList.add("open");
+      return `
+        <div class="rec-item-row" style="margin-bottom:6px;">
+          <div>
+            <div>${i.qty}x ${i.name}</div>
+            ${customSubtext ? `<div style="font-size:0.68rem; color:#666;">${customSubtext}</div>` : ""}
+          </div>
+          <span style="font-weight:600;">${formatCurrency(line)}</span>
+        </div>
+      `;
+    }).join("");
+
+    const tax = order.tax !== undefined ? order.tax : (sub * 0.0875);
+    const total = order.total !== undefined ? order.total : (sub + tax);
+
+    if (recSubtotal) recSubtotal.textContent = formatCurrency(sub);
+    if (recTax) recTax.textContent = formatCurrency(tax);
+    if (recGrand) recGrand.textContent = formatCurrency(total);
+  }
+
+  overlay.classList.add("active");
+  ConfettiEngine.burst();
 }
 
-function initReceiptModal() {
-  const closeBtn = $("#receipt-modal-close");
+function closeReceiptModal() {
   const overlay = $("#receipt-modal-overlay");
-  const printBtn = $("#btn-print-receipt");
+  if (overlay) overlay.classList.remove("active");
+}
 
-  if (closeBtn) {
-    closeBtn.addEventListener("click", () => {
-      SoundSynth.playClick();
-      overlay.classList.remove("open");
-    });
-  }
-
+// ═══════════════════ STAFF KDS & POS OPERATIONS ═══════════════════
+function toggleStaffMode() {
+  const overlay = $("#staff-drawer-overlay");
   if (overlay) {
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) {
-        SoundSynth.playClick();
-        overlay.classList.remove("open");
-      }
-    });
-  }
-
-  if (printBtn) {
-    printBtn.addEventListener("click", () => {
-      SoundSynth.playClick();
-      window.print();
-    });
+    overlay.classList.toggle("active");
+    SoundSynth.playClick();
+    if (overlay.classList.contains("active")) {
+      renderKDS();
+      renderFloorPlan();
+      renderBills();
+      renderHistory();
+    }
   }
 }
 
-// ─── 6. ORDER HISTORY ───
-function renderHistory() {
-  const metricsEl = $("#history-metrics");
-  const tbody = $("#history-tbody");
-  if (!metricsEl || !tbody) return;
+function renderKDS() {
+  const board = $("#kds-board");
+  const empty = $("#kds-empty");
+  const staffKdsBadge = $("#staff-kds-count");
+  if (!board) return;
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayOrders = state.history.filter((h) => h.completedAt >= todayStart.getTime());
-  const totalRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
+  const activeOrders = Object.values(state.orders).filter(
+    (o) => o.status === "queued" || o.status === "in-preparation" || o.status === "ready"
+  );
 
-  metricsEl.innerHTML = `
-    <div class="metric-card">
-      <span class="metric-label">Total Orders Today</span>
-      <span class="metric-value orders">${todayOrders.length}</span>
-    </div>
-    <div class="metric-card">
-      <span class="metric-label">Total Revenue Today</span>
-      <span class="metric-value revenue">${formatCurrency(totalRevenue)}</span>
-    </div>
-  `;
+  if (staffKdsBadge) staffKdsBadge.textContent = activeOrders.length;
 
-  const search = ($("#history-search").value || "").toLowerCase();
-  const filtered = state.history.filter((h) => {
-    const text = `${h.id} table ${h.tableId} ${h.items.map((i) => i.name).join(" ")}`.toLowerCase();
-    return text.includes(search);
-  });
+  let filtered = activeOrders;
+  if (state.kdsFilter !== "all") {
+    filtered = activeOrders.filter((o) => o.status === state.kdsFilter);
+  }
 
-  tbody.innerHTML = "";
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:2.5rem;">No past order records found</td></tr>`;
+    board.innerHTML = "";
+    if (empty) empty.style.display = "block";
     return;
   }
 
-  filtered.forEach((h) => {
-    const itemsSummary = h.items.map((i) => `${i.qty}× ${i.name}`).join(", ");
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="font-weight:700;color:var(--accent-hover)">${h.id}</td>
-      <td><strong>Table ${h.tableId}</strong></td>
-      <td style="max-width:280px;line-height:1.4;">${itemsSummary}</td>
-      <td style="font-weight:700;color:var(--clr-available)">${formatCurrency(h.total)}</td>
-      <td>${formatDate(h.completedAt)}</td>
-      <td><span class="history-badge">Completed</span></td>
-      <td><button class="btn-history-receipt" data-hist-id="${h.id}">🧾 Receipt</button></td>
-    `;
-    tbody.appendChild(tr);
-  });
+  if (empty) empty.style.display = "none";
 
-  // History receipt click
-  $$(".btn-history-receipt").forEach((btn) => {
+  board.innerHTML = filtered.map((ord) => {
+    let tagClass = "kds-tag-queued";
+    let nextAction = "Start Preparation";
+    let nextStatus = "in-preparation";
+
+    if (ord.status === "in-preparation") {
+      tagClass = "kds-tag-prep";
+      nextAction = "Mark Ready to Serve";
+      nextStatus = "ready";
+    } else if (ord.status === "ready") {
+      tagClass = "kds-tag-ready";
+      nextAction = "Confirm Served & Settle";
+      nextStatus = "served";
+    }
+
+    const itemsHtml = ord.items.map((i) => {
+      const extrasHtml = (i.extras || []).map((e) => `<span class="kds-tag-extra">+ ${e.name}</span>`).join("");
+      const spiceHtml = i.spice ? `<span class="kds-tag-spice">${i.spice}</span>` : "";
+      const noteHtml = i.notes ? `<div class="kds-note-box">📝 "${i.notes}"</div>` : "";
+
+      return `
+        <div style="border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px; margin-bottom:8px;">
+          <div class="kds-item-line">
+            <span><strong>${i.qty}x</strong> ${i.name}</span>
+            <span>${formatCurrency(i.price * i.qty)}</span>
+          </div>
+          <div class="kds-custom-tags">${spiceHtml}${extrasHtml}</div>
+          ${noteHtml}
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="kds-ticket-card">
+        <div class="kds-ticket-head">
+          <div>
+            <strong>#${ord.id}</strong>
+            <div style="font-size:0.75rem; color:#A8A69E; margin-top:2px;">
+              ${ord.tableId ? `📍 Table ${ord.tableId}` : "🥡 Takeout Pick-up"}
+            </div>
+            <div class="kds-ticket-time">🕒 ${timeAgo(ord.createdAt)}</div>
+          </div>
+          <span class="kds-tag-status ${tagClass}">${ord.status}</span>
+        </div>
+        <div class="kds-ticket-body">${itemsHtml}</div>
+        <button class="kds-action-btn" data-order-id="${ord.id}" data-next="${nextStatus}">${nextAction} &rarr;</button>
+      </div>
+    `;
+  }).join("");
+
+  $$(".kds-action-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      SoundSynth.playClick();
-      const rec = state.history.find((h) => h.id === btn.dataset.histId);
-      if (rec) openReceiptModal(rec);
+      const oId = btn.dataset.orderId;
+      const next = btn.dataset.next;
+      advanceOrderStatus(oId, next);
     });
   });
 }
 
-function initHistorySearch() {
-  const searchInput = $("#history-search");
+function advanceOrderStatus(orderId, nextStatus) {
+  const order = state.orders[orderId];
+  if (!order) return;
+
+  order.status = nextStatus;
+  SoundSynth.playClick();
+
+  if (nextStatus === "served") {
+    showToast(`Order #${orderId} marked served! Ready for check settlement.`, "success");
+  } else if (nextStatus === "ready") {
+    showToast(`Order #${orderId} is READY for service! 🛎️`, "info");
+    SoundSynth.playTone(880, "triangle", 0.2);
+  }
+
+  syncTableStatuses();
+  renderKDS();
+  renderFloorPlan();
+  renderBills();
+  saveState();
+}
+
+function renderBills() {
+  const grid = $("#bills-grid");
+  const empty = $("#bills-empty");
+  const billsBadge = $("#staff-bills-count");
+  if (!grid) return;
+
+  const served = Object.values(state.orders).filter((o) => o.status === "served");
+  if (billsBadge) billsBadge.textContent = served.length;
+
+  if (served.length === 0) {
+    grid.innerHTML = "";
+    if (empty) empty.style.display = "block";
+    return;
+  }
+
+  if (empty) empty.style.display = "none";
+
+  grid.innerHTML = served.map((ord) => `
+    <div class="bill-card">
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+        <strong>#${ord.id}</strong>
+        <span style="font-weight:800; color:var(--accent-yellow); font-size:1.1rem;">${formatCurrency(ord.total)}</span>
+      </div>
+      <div style="font-size:0.75rem; color:#A8A69E; margin-bottom:12px;">
+        ${ord.tableId ? `Table ${ord.tableId} · Dine-In` : "Takeout / Food Truck"} · Placed ${timeAgo(ord.createdAt)}
+      </div>
+      <button class="kds-action-btn" data-bill-id="${ord.id}">Settle &amp; Print Paid Receipt</button>
+    </div>
+  `).join("");
+
+  $$("[data-bill-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.billId;
+      settleBill(id);
+    });
+  });
+}
+
+function settleBill(orderId) {
+  const order = state.orders[orderId];
+  if (!order) return;
+
+  order.status = "settled";
+  order.settledAt = Date.now();
+  state.history.unshift(order);
+  delete state.orders[orderId];
+
+  // Sync table status so table is released back to available
+  syncTableStatuses();
+
+  SoundSynth.playOrderSent();
+  showToast(`Bill #${orderId} settled in full! Table is now available. 🧾`, "success");
+
+  renderKDS();
+  renderFloorPlan();
+  renderBills();
+  renderHistory();
+  saveState();
+
+  openReceiptModal(order);
+}
+
+function renderHistory() {
+  const tbody = $("#history-tbody");
+  if (!tbody) return;
+
+  if (state.history.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:#888;">No orders settled yet</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = state.history.map((ord) => {
+    const tableLabel = ord.tableId ? `Table ${ord.tableId}` : "Takeout";
+    const itemsList = ord.items.map((i) => `${i.qty}x ${i.name}`).join(", ");
+    const timeFormatted = new Date(ord.settledAt || ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    return `
+      <tr>
+        <td><strong>#${ord.id}</strong></td>
+        <td>${tableLabel}</td>
+        <td>${itemsList}</td>
+        <td>${timeFormatted}</td>
+        <td><strong>${formatCurrency(ord.total)}</strong></td>
+        <td><button class="utility-btn" data-receipt-id="${ord.id}">View Receipt</button></td>
+      </tr>
+    `;
+  }).join("");
+
+  $$("[data-receipt-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const ord = state.history.find((h) => h.id === btn.dataset.receiptId);
+      if (ord) openReceiptModal(ord);
+    });
+  });
+}
+
+// ═══════════════════ TOAST NOTIFICATIONS ═══════════════════
+function showToast(msg, type = "success") {
+  const container = $("#toast-container");
+  if (!container) return;
+
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = msg;
+
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(10px)";
+    setTimeout(() => toast.remove(), 300);
+  }, 2800);
+}
+
+// ═══════════════════ CLOCK & LIVE TIMERS ═══════════════════
+function startClock() {
+  const clock = $("#header-clock");
+  const update = () => {
+    const d = new Date();
+    if (clock) {
+      clock.textContent = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+  };
+  update();
+  setInterval(update, 1000);
+
+  // Periodic refresh of live elapsed timers on KDS tickets
+  setInterval(() => {
+    renderKDS();
+  }, 30000);
+}
+
+// ═══════════════════ MASTER RENDER ═══════════════════
+function renderAll() {
+  updateCartBadge();
+  renderProductGrid();
+  renderFloorPlan();
+  renderCartDrawer();
+  renderKDS();
+  renderBills();
+  renderHistory();
+  selectTable(state.selectedTable);
+}
+
+// ═══════════════════ EVENT LISTENERS & SETUP ═══════════════════
+let isSubmittingOrder = false;
+
+function initEventListeners() {
+  // Navigation scrolling & active tab indicator
+  $$(".nav-item").forEach((link) => {
+    link.addEventListener("click", (e) => {
+      const navTarget = link.dataset.nav;
+      if (navTarget === "reservation") {
+        e.preventDefault();
+        openReservationModal();
+        return;
+      }
+      $$(".nav-item").forEach((l) => l.classList.remove("active"));
+      link.classList.add("active");
+    });
+  });
+
+  // Mobile menu hamburger
+  const hamburger = $("#nav-mobile-toggle");
+  const navMenu = $("#nav-links-list");
+  if (hamburger && navMenu) {
+    hamburger.addEventListener("click", () => {
+      navMenu.classList.toggle("mobile-open");
+    });
+    $$(".nav-item").forEach((l) => {
+      l.addEventListener("click", () => navMenu.classList.remove("mobile-open"));
+    });
+  }
+
+  // Cart open / close buttons
+  const btnOpenCart = $("#btn-open-cart");
+  const btnCloseCart = $("#btn-close-cart");
+  const backdropCart = $("#cart-drawer-backdrop");
+  const btnBrowse = $("#btn-cart-browse-menu");
+
+  if (btnOpenCart) btnOpenCart.addEventListener("click", openCartDrawer);
+  if (btnCloseCart) btnCloseCart.addEventListener("click", closeCartDrawer);
+  if (backdropCart) backdropCart.addEventListener("click", closeCartDrawer);
+  if (btnBrowse) {
+    btnBrowse.addEventListener("click", () => {
+      closeCartDrawer();
+      const menuEl = $("#menu");
+      if (menuEl) menuEl.scrollIntoView({ behavior: "smooth" });
+    });
+  }
+
+  // Cart Table Assignment Dropdown Change
+  const cartSelect = $("#cart-table-select");
+  if (cartSelect) {
+    cartSelect.addEventListener("change", (e) => {
+      selectTable(e.target.value);
+      renderCartDrawer();
+    });
+  }
+
+  // Checkout with Duplicate Protection
+  const btnCheckout = $("#btn-cart-checkout");
+  if (btnCheckout) {
+    btnCheckout.addEventListener("click", () => {
+      if (isSubmittingOrder) return;
+      if (state.cart.length === 0) return;
+
+      isSubmittingOrder = true;
+      btnCheckout.disabled = true;
+      btnCheckout.textContent = "Sending Order to Kitchen...";
+
+      try {
+        const orderId = genId();
+        let subtotal = 0;
+
+        // Fully preserve item customizations, extras with prices, and kitchen notes
+        const orderItems = state.cart.map((entry) => {
+          const item = MENU_ITEMS.find((m) => m.id === entry.itemId);
+          const lineTotal = entry.unitPrice * entry.qty;
+          subtotal += lineTotal;
+
+          return {
+            name: item.name,
+            price: entry.unitPrice,
+            basePrice: item.price,
+            qty: entry.qty,
+            spice: entry.spice || "Mild",
+            extras: entry.extras || [],
+            notes: entry.notes || "",
+          };
+        });
+
+        const tax = subtotal * 0.0875;
+        const total = subtotal + tax;
+        const isDineIn = state.selectedTable !== "takeout";
+        const tableId = isDineIn ? Number(state.selectedTable) : null;
+
+        const order = {
+          id: orderId,
+          tableId: tableId,
+          createdAt: Date.now(),
+          status: "queued",
+          items: orderItems,
+          subtotal: subtotal,
+          tax: tax,
+          total: total,
+        };
+
+        state.orders[orderId] = order;
+
+        // Update table status if dine-in
+        if (isDineIn) {
+          const table = state.tables.find((t) => t.id === tableId);
+          if (table) {
+            table.status = "preparing";
+            table.currentOrderId = orderId;
+          }
+        }
+
+        // Clear cart
+        state.cart = [];
+        updateCartBadge();
+        renderCartDrawer();
+        closeCartDrawer();
+        syncTableStatuses();
+        renderFloorPlan();
+        renderKDS();
+        saveState();
+
+        SoundSynth.playOrderSent();
+        ConfettiEngine.burst();
+        showToast(`Order #${orderId} sent to kitchen for ${isDineIn ? `Table ${tableId}` : "Takeout"}! 👨‍🍳`, "success");
+        openReceiptModal(order);
+      } finally {
+        setTimeout(() => {
+          isSubmittingOrder = false;
+          if (btnCheckout) {
+            btnCheckout.disabled = false;
+            btnCheckout.innerHTML = `<span>Send Order to Kitchen</span><span class="checkout-arrow">&rarr;</span>`;
+          }
+        }, 1200);
+      }
+    });
+  }
+
+  // Reservation open buttons
+  const btnHeroRes = $("#btn-hero-reservation");
+  const btnCloseRes = $("#reservation-modal-close");
+  const overlayRes = $("#reservation-modal-overlay");
+  const footerResLink = $("#footer-reservation-link");
+
+  if (btnHeroRes) btnHeroRes.addEventListener("click", openReservationModal);
+  if (footerResLink) {
+    footerResLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      openReservationModal();
+    });
+  }
+  if (btnCloseRes) btnCloseRes.addEventListener("click", closeReservationModal);
+  if (overlayRes) {
+    overlayRes.addEventListener("click", (e) => {
+      if (e.target === overlayRes) closeReservationModal();
+    });
+  }
+
+  // Reservation Form Submit Handler
+  const resForm = $("#reservation-form");
+  if (resForm) {
+    resForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = $("#res-name").value.trim();
+      const phone = $("#res-phone").value.trim();
+      const email = $("#res-email").value.trim();
+      const guests = $("#res-guests").value;
+      const date = $("#res-date").value;
+      const time = $("#res-time").value;
+
+      if (!name || !phone || !email || !date) {
+        showToast("Please fill in all required fields", "info");
+        return;
+      }
+
+      SoundSynth.playOrderSent();
+      ConfettiEngine.burst();
+      closeReservationModal();
+      showToast(`Reservation confirmed for ${name} (${guests} guests on ${date} at ${time})! 🎉`, "success");
+      resForm.reset();
+    });
+  }
+
+  // Customization modal handlers
+  const btnCloseModal = $("#modal-close");
+  const overlayModal = $("#modal-overlay");
+  const qtyPlus = $("#qty-plus");
+  const qtyMinus = $("#qty-minus");
+  const btnAddToOrder = $("#btn-add-to-order");
+
+  if (btnCloseModal) btnCloseModal.addEventListener("click", closeItemModal);
+  if (overlayModal) {
+    overlayModal.addEventListener("click", (e) => {
+      if (e.target === overlayModal) closeItemModal();
+    });
+  }
+  if (qtyPlus) {
+    qtyPlus.addEventListener("click", () => {
+      currentCustomQty++;
+      $("#qty-value").textContent = currentCustomQty;
+      SoundSynth.playClick();
+    });
+  }
+  if (qtyMinus) {
+    qtyMinus.addEventListener("click", () => {
+      if (currentCustomQty > 1) {
+        currentCustomQty--;
+        $("#qty-value").textContent = currentCustomQty;
+        SoundSynth.playClick();
+      }
+    });
+  }
+  if (btnAddToOrder) {
+    btnAddToOrder.addEventListener("click", () => {
+      if (!currentCustomItem) return;
+      const spice = $('input[name="spice"]:checked')?.value || "Mild";
+      const notes = $("#kitchen-notes")?.value.trim() || "";
+
+      // Read selected extras and prices
+      const extras = [];
+      $$("#extras-group input[type='checkbox']:checked").forEach((cb) => {
+        let price = 0.50;
+        if (cb.value.includes("Cheddar")) price = 1.00;
+        extras.push({ name: cb.value, price: price });
+      });
+
+      addToCart(currentCustomItem.id, currentCustomQty, spice, extras, notes);
+      SoundSynth.playItemAdded();
+      showToast(`Added ${currentCustomQty}x ${currentCustomItem.name} to order! 🛍️`, "success");
+      closeItemModal();
+    });
+  }
+
+  // Receipt modal close & print
+  const btnCloseRec = $("#receipt-modal-close");
+  const overlayRec = $("#receipt-modal-overlay");
+  const btnPrintRec = $("#btn-print-receipt");
+
+  if (btnCloseRec) btnCloseRec.addEventListener("click", closeReceiptModal);
+  if (overlayRec) {
+    overlayRec.addEventListener("click", (e) => {
+      if (e.target === overlayRec) closeReceiptModal();
+    });
+  }
+  if (btnPrintRec) {
+    btnPrintRec.addEventListener("click", () => {
+      window.print();
+    });
+  }
+
+  // Category filter tabs
+  $$(".category-pill").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      SoundSynth.playClick();
+      $$(".category-pill").forEach((p) => p.classList.remove("active"));
+      pill.classList.add("active");
+      state.activeCategory = pill.dataset.category;
+      renderProductGrid();
+    });
+  });
+
+  // Search input & clear button
+  const searchInput = $("#menu-search-input");
+  const searchClear = $("#menu-search-clear");
+  const resetFiltersBtn = $("#btn-reset-filters");
+
   if (searchInput) {
-    searchInput.addEventListener("input", () => renderHistory());
+    searchInput.addEventListener("input", (e) => {
+      state.searchTerm = e.target.value;
+      if (searchClear) searchClear.classList.toggle("hidden", !e.target.value);
+      renderProductGrid();
+    });
+  }
+
+  if (searchClear) {
+    searchClear.addEventListener("click", () => {
+      searchInput.value = "";
+      state.searchTerm = "";
+      searchClear.classList.add("hidden");
+      renderProductGrid();
+      SoundSynth.playClick();
+    });
+  }
+
+  if (resetFiltersBtn) {
+    resetFiltersBtn.addEventListener("click", () => {
+      state.searchTerm = "";
+      state.activeCategory = "All Items";
+      if (searchInput) searchInput.value = "";
+      if (searchClear) searchClear.classList.add("hidden");
+      $$(".category-pill").forEach((p) => p.classList.toggle("active", p.dataset.category === "All Items"));
+      renderProductGrid();
+      SoundSynth.playClick();
+    });
+  }
+
+  // Nav Search button focus
+  const navSearchBtn = $("#nav-search-btn");
+  if (navSearchBtn) {
+    navSearchBtn.addEventListener("click", () => {
+      const menuSection = $("#menu");
+      if (menuSection) menuSection.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => {
+        if (searchInput) searchInput.focus();
+      }, 500);
+    });
+  }
+
+  // Sort dropdown handling
+  const sortBtn = $("#sort-dropdown-btn");
+  const sortWrap = $("#sort-dropdown-wrap");
+  const currentSortLabel = $("#current-sort-label");
+
+  if (sortBtn && sortWrap) {
+    sortBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      sortWrap.classList.toggle("open");
+      SoundSynth.playClick();
+    });
+
+    document.addEventListener("click", () => {
+      sortWrap.classList.remove("open");
+    });
+
+    $$(".sort-option").forEach((opt) => {
+      opt.addEventListener("click", (e) => {
+        e.stopPropagation();
+        $$(".sort-option").forEach((o) => o.classList.remove("active"));
+        opt.classList.add("active");
+        state.activeSort = opt.dataset.sort;
+        if (currentSortLabel) currentSortLabel.textContent = opt.textContent;
+        sortWrap.classList.remove("open");
+        SoundSynth.playClick();
+        renderProductGrid();
+      });
+    });
+  }
+
+  // Staff Mode Toggle
+  const btnToggleStaff = $("#btn-toggle-staff-mode");
+  const btnCloseStaff = $("#btn-close-staff-mode");
+  if (btnToggleStaff) btnToggleStaff.addEventListener("click", toggleStaffMode);
+  if (btnCloseStaff) btnCloseStaff.addEventListener("click", toggleStaffMode);
+
+  // Staff Subtabs
+  $$(".staff-tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      SoundSynth.playClick();
+      $$(".staff-tab-btn").forEach((b) => b.classList.remove("active"));
+      $$(".staff-subview").forEach((v) => v.classList.remove("active"));
+
+      btn.classList.add("active");
+      const target = btn.dataset.staffView;
+      const viewEl = $(`#staff-view-${target}`);
+      if (viewEl) viewEl.classList.add("active");
+    });
+  });
+
+  // Sound toggle button in utility bar
+  const soundToggle = $("#sound-toggle");
+  if (soundToggle) soundToggle.addEventListener("click", () => SoundSynth.toggle());
+
+  // Demo reset
+  const btnReset = $("#btn-reset-demo");
+  if (btnReset) {
+    btnReset.addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      state.cart = [
+        { itemId: "bg-1", qty: 1, spice: "Mild", extras: [{ name: "Cheddar Slice", price: 1.00 }], notes: "Extra crispy edges", unitPrice: 9.99 },
+        { itemId: "bg-5", qty: 1, spice: "Shichimi 🔥", extras: [], notes: "", unitPrice: 12.49 },
+        { itemId: "bg-4", qty: 1, spice: "Mild", extras: [], notes: "Less ice please", unitPrice: 4.49 },
+      ];
+      state.orders = {};
+      state.history = [];
+      state.tables = JSON.parse(JSON.stringify(INITIAL_TABLES));
+      state.selectedTable = 1;
+      state.activeCategory = "All Items";
+      state.activeSort = "popular";
+      state.searchTerm = "";
+
+      seedBaselineOrders();
+      renderAll();
+      saveState();
+
+      SoundSynth.playTone(440, "sine", 0.1);
+      showToast("Demo state reset to reference defaults! ↺", "info");
+    });
   }
 }
 
-// ═══════════════════ LIVE KDS ELAPSED TIMER ═══════════════════
-function updateKDSTimes() {
-  $$(".kds-time").forEach((el) => {
-    const card = el.closest(".kds-ticket");
-    if (!card) return;
-    const orderId = card.id.replace("kds-", "");
-    const order = state.orders[orderId];
-    if (order) {
-      el.textContent = timeAgo(order.createdAt);
-      const elapsed = Math.floor((Date.now() - order.createdAt) / 1000);
-      if (elapsed > 1200) card.dataset.urgency = "critical";
-      else if (elapsed > 600) card.dataset.urgency = "warn";
-      else delete card.dataset.urgency;
-    }
-  });
-}
-
-// ═══════════════════ KEYBOARD SHORTCUTS ═══════════════════
-function initKeyboardShortcuts() {
-  window.addEventListener("keydown", (e) => {
-    // Avoid interfering with typing in inputs / notes
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
-      if (e.key === "Escape") {
-        closeModal();
-        const recModal = $("#receipt-modal-overlay");
-        if (recModal) recModal.classList.remove("open");
-      }
-      return;
-    }
-
-    if (e.key === "1") switchToView("tables");
-    else if (e.key === "2") switchToView("kitchen");
-    else if (e.key === "3") switchToView("bills");
-    else if (e.key === "4") switchToView("history");
-    else if (e.key === "s" || e.key === "S") SoundSynth.toggle();
-    else if (e.key === "Escape") {
-      closeModal();
-      const recModal = $("#receipt-modal-overlay");
-      if (recModal) recModal.classList.remove("open");
-    } else if (e.key === "Enter" && $("#modal-overlay")?.classList.contains("open")) {
-      addItemToOrder();
-    }
-  });
-}
-
-// ═══════════════════ INITIALIZATION ═══════════════════
-function init() {
-  seedDemoData();
+// ═══════════════════ APPLICATION INITIALIZATION ═══════════════════
+document.addEventListener("DOMContentLoaded", () => {
   AmbientEngine.init();
   ConfettiEngine.init();
-
-  initNav();
-  initTableFilters();
-  initModal();
-  initReceiptModal();
-  initTicket();
-  initKDSFilters();
-  initHistorySearch();
-  initKeyboardShortcuts();
-
-  render();
-
-  // Header clock
-  updateClock();
-  setInterval(updateClock, 1000);
-
-  // KDS real-time ticket aging
-  setInterval(updateKDSTimes, 4000);
-}
-
-document.addEventListener("DOMContentLoaded", init);
+  startClock();
+  loadState();
+  initEventListeners();
+  renderAll();
+});
