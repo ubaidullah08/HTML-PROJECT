@@ -27,29 +27,56 @@ const timeAgo = (ts) => {
 const SoundSynth = {
   ctx: null,
   enabled: true,
+  lastPlayTime: 0,
+  minInterval: 120, // Rate limit to prevent audio buffer floods and tab crashes
 
   init() {
     if (!this.ctx && (window.AudioContext || window.webkitAudioContext)) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AudioCtx();
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioCtx();
+      } catch (err) {
+        console.warn("Could not create AudioContext:", err);
+      }
     }
     if (this.ctx && this.ctx.state === "suspended") {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
   },
 
-  toggle() {
-    this.enabled = !this.enabled;
+  initMuteState() {
+    try {
+      const saved = localStorage.getItem("ktch_sound_enabled");
+      if (saved !== null) {
+        this.enabled = JSON.parse(saved);
+      }
+    } catch (_) {}
+    this.updateUI();
+  },
+
+  updateUI() {
     const icon = $("#sound-icon");
     const label = $("#sound-label");
     if (icon) icon.textContent = this.enabled ? "🔔" : "🔕";
     if (label) label.textContent = this.enabled ? "Audio On" : "Muted";
-    showToast(this.enabled ? "Audio chime feedback enabled 🔔" : "Audio muted 🔕", "info");
-    if (this.enabled) this.playTap();
+  },
+
+  toggle() {
+    this.enabled = !this.enabled;
+    try {
+      localStorage.setItem("ktch_sound_enabled", JSON.stringify(this.enabled));
+    } catch (_) {}
+    this.updateUI();
+    showToast(this.enabled ? "Audio notifications enabled 🔔" : "Audio muted 🔕", "info");
+    if (this.enabled) this.playTone(520, "sine", 0.08, 0.08);
   },
 
   playTone(freq, type, duration, startGain = 0.12, endGain = 0.001) {
     if (!this.enabled) return;
+    const nowMs = Date.now();
+    if (nowMs - this.lastPlayTime < this.minInterval) return;
+    this.lastPlayTime = nowMs;
+
     try {
       this.init();
       if (!this.ctx) return;
@@ -61,47 +88,76 @@ const SoundSynth = {
       osc.frequency.setValueAtTime(freq, now);
 
       gain.gain.setValueAtTime(startGain, now);
-      gain.gain.exponentialRampToValueAtTime(endGain, now + duration);
+      gain.gain.exponentialRampToValueAtTime(Math.max(endGain, 0.0001), now + duration);
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
 
+      // Explicit node lifecycle cleanup to prevent hardware channel exhaustion
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch (_) {}
+      };
+
       osc.start(now);
       osc.stop(now + duration);
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Audio safely skipped:", e);
+    }
   },
 
   playTap() {
-    this.playTone(340, "sine", 0.05, 0.08);
+    this.playTone(340, "sine", 0.04, 0.05);
   },
 
   playClick() {
-    this.playTone(580, "triangle", 0.04, 0.06);
+    this.playTone(580, "triangle", 0.04, 0.05);
   },
 
   playItemAdded() {
     if (!this.enabled) return;
+    const nowMs = Date.now();
+    if (nowMs - this.lastPlayTime < this.minInterval) return;
+    this.lastPlayTime = nowMs;
+
     try {
       this.init();
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
-      [523.25, 659.25, 783.99].forEach((freq, i) => {
+      [523.25, 659.25].forEach((freq, i) => {
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = "sine";
         osc.frequency.setValueAtTime(freq, now + i * 0.06);
-        gain.gain.setValueAtTime(0.09, now + i * 0.06);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.2);
+        gain.gain.setValueAtTime(0.08, now + i * 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.18);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
+
+        osc.onended = () => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+          } catch (_) {}
+        };
+
         osc.start(now + i * 0.06);
-        osc.stop(now + i * 0.06 + 0.2);
+        osc.stop(now + i * 0.06 + 0.18);
       });
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Audio safely skipped:", e);
+    }
   },
 
   playOrderSent() {
+    // Genuine new kitchen order notification - plays once per received order
     if (!this.enabled) return;
+    const nowMs = Date.now();
+    if (nowMs - this.lastPlayTime < this.minInterval) return;
+    this.lastPlayTime = nowMs;
+
     try {
       this.init();
       if (!this.ctx) return;
@@ -115,10 +171,20 @@ const SoundSynth = {
         gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.35);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
+
+        osc.onended = () => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+          } catch (_) {}
+        };
+
         osc.start(now + i * 0.06);
         osc.stop(now + i * 0.06 + 0.35);
       });
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Kitchen notification safely skipped:", e);
+    }
   },
 };
 
@@ -870,7 +936,7 @@ function syncTableStatuses() {
   });
 }
 
-function selectTable(tableId) {
+function selectTable(tableId, rerender = true) {
   state.selectedTable = tableId === "takeout" ? "takeout" : Number(tableId);
 
   // Update Active Table Banner on menu
@@ -897,8 +963,10 @@ function selectTable(tableId) {
     }
   }
 
-  renderFloorPlan();
-  saveState();
+  if (rerender) {
+    renderFloorPlan();
+    saveState();
+  }
 }
 
 // ═══════════════════ FLOOR PLAN RENDERING ═══════════════════
@@ -991,58 +1059,46 @@ function renderFloorPlan() {
   const html = tablesToShow.map(generateTableHtml).join("");
   if (floorGrid) floorGrid.innerHTML = html;
   if (modalGrid) modalGrid.innerHTML = html;
-
-  attachFloorTableEvents();
+  // Note: Event delegation is registered once in initEventListeners, preventing listener duplication
 }
 
-function attachFloorTableEvents() {
-  $$("[data-action-table]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const tId = parseInt(btn.dataset.actionTable, 10);
-      const status = btn.dataset.status;
+function handleFloorGridClick(e) {
+  // Check if an action button was clicked
+  const actionBtn = e.target.closest("[data-action-table]");
+  if (actionBtn) {
+    e.stopPropagation();
+    const tId = parseInt(actionBtn.dataset.actionTable, 10);
+    const status = actionBtn.dataset.status;
 
-      if (status === "served") {
-        // Open bill settlement for this table
-        const order = Object.values(state.orders).find((o) => o.tableId === tId && o.status === "served");
-        if (order) {
-          settleBill(order.id);
-          return;
-        }
-      }
-
-      if (status === "preparing" || status === "ready") {
-        toggleStaffMode();
+    if (status === "served") {
+      const order = Object.values(state.orders).find((o) => o.tableId === tId && o.status === "served");
+      if (order) {
+        settleBill(order.id);
         return;
       }
+    }
 
-      // Select table and scroll to menu
+    if (status === "preparing" || status === "ready") {
+      toggleStaffMode();
+      return;
+    }
+
+    // Select table and scroll to menu
+    selectTable(tId);
+    showToast(`Ordering for Table ${tId}! Browse menu below 🍽️`, "info");
+    const menuSection = $("#menu");
+    if (menuSection) menuSection.scrollIntoView({ behavior: "smooth" });
+    return;
+  }
+
+  // Check if card itself was clicked
+  const card = e.target.closest(".floor-table-card");
+  if (card) {
+    const tId = parseInt(card.dataset.tableId, 10);
+    if (!isNaN(tId)) {
       selectTable(tId);
-      SoundSynth.playClick();
-      showToast(`Ordering for Table ${tId}! Browse menu below 🍽️`, "info");
-      const menuSection = $("#menu");
-      if (menuSection) menuSection.scrollIntoView({ behavior: "smooth" });
-    });
-  });
-
-  $$(".floor-table-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      const tId = parseInt(card.dataset.tableId, 10);
-      selectTable(tId);
-      SoundSynth.playTap();
-    });
-  });
-
-  // Table filter chips
-  $$("[data-floor-filter]").forEach((chip) => {
-    chip.addEventListener("click", () => {
-      SoundSynth.playClick();
-      $$("[data-floor-filter]").forEach((c) => c.classList.remove("active"));
-      chip.classList.add("active");
-      state.floorFilter = chip.dataset.floorFilter;
-      renderFloorPlan();
-    });
-  });
+    }
+  }
 }
 
 // ═══════════════════ PRODUCT GRID RENDERING ═══════════════════
@@ -1132,49 +1188,6 @@ function renderProductGrid() {
       </div>
     `;
   }).join("");
-
-  attachCardEvents();
-}
-
-function attachCardEvents() {
-  $$(".btn-fav").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      SoundSynth.playClick();
-      const id = btn.dataset.favId;
-      if (state.favorites.has(id)) {
-        state.favorites.delete(id);
-        btn.classList.remove("active");
-        showToast("Removed from favorites", "info");
-      } else {
-        state.favorites.add(id);
-        btn.classList.add("active");
-        showToast("Added to favorites! ❤️", "success");
-      }
-      saveState();
-    });
-  });
-
-  $$(".btn-add-circle").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      const item = MENU_ITEMS.find((m) => m.id === id);
-      if (!item) return;
-
-      SoundSynth.playItemAdded();
-      addToCart(item.id, 1, "Mild", [], "", item.price);
-      showToast(`Added ${item.name} to order! 🛍️`, "success");
-    });
-  });
-
-  $$("[data-action='custom']").forEach((el) => {
-    el.addEventListener("click", () => {
-      const id = el.dataset.id;
-      const item = MENU_ITEMS.find((m) => m.id === id);
-      if (item) openItemModal(item);
-    });
-  });
 }
 
 // ═══════════════════ CART SYSTEM & DRAWER ═══════════════════
@@ -1318,21 +1331,12 @@ function renderCartDrawer() {
       ? "Confirm Takeout Order"
       : `Send Order to Kitchen (Table ${state.selectedTable})`;
   }
-
-  $$(".cart-step-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const idx = parseInt(btn.dataset.cartIdx, 10);
-      const delta = parseInt(btn.dataset.delta, 10);
-      updateCartQty(idx, delta);
-    });
-  });
 }
 
 function openCartDrawer() {
   const drawer = $("#cart-drawer");
   const backdrop = $("#cart-drawer-backdrop");
   if (drawer && backdrop) {
-    SoundSynth.playClick();
     drawer.classList.add("active");
     backdrop.classList.add("active");
     renderCartDrawer();
@@ -1382,7 +1386,6 @@ function openItemModal(item) {
   if (mildRadio) mildRadio.checked = true;
 
   if (overlay) overlay.classList.add("active");
-  SoundSynth.playClick();
 }
 
 function closeItemModal() {
@@ -1396,7 +1399,6 @@ function openReservationModal() {
   const overlay = $("#reservation-modal-overlay");
   if (overlay) {
     overlay.classList.add("active");
-    SoundSynth.playClick();
 
     const dateInput = $("#res-date");
     if (dateInput && !dateInput.value) {
@@ -1477,7 +1479,6 @@ function toggleStaffMode() {
   const overlay = $("#staff-drawer-overlay");
   if (overlay) {
     overlay.classList.toggle("active");
-    SoundSynth.playClick();
     if (overlay.classList.contains("active")) {
       renderKDS();
       renderFloorPlan();
@@ -1561,14 +1562,6 @@ function renderKDS() {
       </div>
     `;
   }).join("");
-
-  $$(".kds-action-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const oId = btn.dataset.orderId;
-      const next = btn.dataset.next;
-      advanceOrderStatus(oId, next);
-    });
-  });
 }
 
 function advanceOrderStatus(orderId, nextStatus) {
@@ -1576,13 +1569,14 @@ function advanceOrderStatus(orderId, nextStatus) {
   if (!order) return;
 
   order.status = nextStatus;
-  SoundSynth.playClick();
 
+  // Status transition toast feedback only - no audio loop or runaway beeps
   if (nextStatus === "served") {
     showToast(`Order #${orderId} marked served! Ready for check settlement.`, "success");
   } else if (nextStatus === "ready") {
     showToast(`Order #${orderId} is READY for service! 🛎️`, "info");
-    SoundSynth.playTone(880, "triangle", 0.2);
+  } else if (nextStatus === "in-preparation") {
+    showToast(`Order #${orderId} is now in preparation 👨‍🍳`, "info");
   }
 
   syncTableStatuses();
@@ -1621,13 +1615,6 @@ function renderBills() {
       <button class="kds-action-btn" data-bill-id="${ord.id}">Settle &amp; Print Paid Receipt</button>
     </div>
   `).join("");
-
-  $$("[data-bill-id]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.billId;
-      settleBill(id);
-    });
-  });
 }
 
 function settleBill(orderId) {
@@ -1642,7 +1629,6 @@ function settleBill(orderId) {
   // Sync table status so table is released back to available
   syncTableStatuses();
 
-  SoundSynth.playOrderSent();
   showToast(`Bill #${orderId} settled in full! Table is now available. 🧾`, "success");
 
   renderKDS();
@@ -1679,13 +1665,6 @@ function renderHistory() {
       </tr>
     `;
   }).join("");
-
-  $$("[data-receipt-id]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const ord = state.history.find((h) => h.id === btn.dataset.receiptId);
-      if (ord) openReceiptModal(ord);
-    });
-  });
 }
 
 // ═══════════════════ TOAST NOTIFICATIONS ═══════════════════
@@ -1732,7 +1711,7 @@ function renderAll() {
   renderKDS();
   renderBills();
   renderHistory();
-  selectTable(state.selectedTable);
+  selectTable(state.selectedTable, false);
 }
 
 // ═══════════════════ EVENT LISTENERS & SETUP ═══════════════════
@@ -1991,7 +1970,6 @@ function initEventListeners() {
   // Category filter tabs
   $$(".category-pill").forEach((pill) => {
     pill.addEventListener("click", () => {
-      SoundSynth.playClick();
       $$(".category-pill").forEach((p) => p.classList.remove("active"));
       pill.classList.add("active");
       state.activeCategory = pill.dataset.category;
@@ -2018,7 +1996,6 @@ function initEventListeners() {
       state.searchTerm = "";
       searchClear.classList.add("hidden");
       renderProductGrid();
-      SoundSynth.playClick();
     });
   }
 
@@ -2030,7 +2007,6 @@ function initEventListeners() {
       if (searchClear) searchClear.classList.add("hidden");
       $$(".category-pill").forEach((p) => p.classList.toggle("active", p.dataset.category === "All Items"));
       renderProductGrid();
-      SoundSynth.playClick();
     });
   }
 
@@ -2055,7 +2031,6 @@ function initEventListeners() {
     sortBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       sortWrap.classList.toggle("open");
-      SoundSynth.playClick();
     });
 
     document.addEventListener("click", () => {
@@ -2070,7 +2045,6 @@ function initEventListeners() {
         state.activeSort = opt.dataset.sort;
         if (currentSortLabel) currentSortLabel.textContent = opt.textContent;
         sortWrap.classList.remove("open");
-        SoundSynth.playClick();
         renderProductGrid();
       });
     });
@@ -2085,7 +2059,6 @@ function initEventListeners() {
   // Staff Subtabs
   $$(".staff-tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      SoundSynth.playClick();
       $$(".staff-tab-btn").forEach((b) => b.classList.remove("active"));
       $$(".staff-subview").forEach((v) => v.classList.remove("active"));
 
@@ -2095,6 +2068,123 @@ function initEventListeners() {
       if (viewEl) viewEl.classList.add("active");
     });
   });
+
+  // Floor Plan Tables Grid (main page & modal) - Delegated click handlers
+  const floorGrid = $("#floor-tables-grid");
+  if (floorGrid) floorGrid.addEventListener("click", handleFloorGridClick);
+  const modalGrid = $("#modal-table-grid");
+  if (modalGrid) modalGrid.addEventListener("click", handleFloorGridClick);
+
+  // Floor Plan Filter Chips (All, Available, In Prep, Ready, Served) - One-time attachment, silent state navigation
+  const floorFilterChips = $$("[data-floor-filter]");
+  floorFilterChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      floorFilterChips.forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      state.floorFilter = chip.dataset.floorFilter;
+      renderFloorPlan();
+    });
+  });
+
+  // KDS Filter Chips - One-time attachment, silent queue navigation
+  const kdsFilterChips = $$("[data-kds-filter]");
+  kdsFilterChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      kdsFilterChips.forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      state.kdsFilter = chip.dataset.kdsFilter;
+      renderKDS();
+    });
+  });
+
+  // KDS Action Buttons Event Delegation (#kds-board)
+  const kdsBoard = $("#kds-board");
+  if (kdsBoard) {
+    kdsBoard.addEventListener("click", (e) => {
+      const btn = e.target.closest(".kds-action-btn");
+      if (btn && btn.dataset.orderId && btn.dataset.next) {
+        advanceOrderStatus(btn.dataset.orderId, btn.dataset.next);
+      }
+    });
+  }
+
+  // Bills Grid Event Delegation (#bills-grid)
+  const billsGrid = $("#bills-grid");
+  if (billsGrid) {
+    billsGrid.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-bill-id]");
+      if (btn && btn.dataset.billId) {
+        settleBill(btn.dataset.billId);
+      }
+    });
+  }
+
+  // History Table Event Delegation (#history-tbody)
+  const historyTbody = $("#history-tbody");
+  if (historyTbody) {
+    historyTbody.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-receipt-id]");
+      if (btn && btn.dataset.receiptId) {
+        const ord = state.history.find((h) => h.id === btn.dataset.receiptId);
+        if (ord) openReceiptModal(ord);
+      }
+    });
+  }
+
+  // Cart Stepper Event Delegation (#cart-items-list)
+  const cartList = $("#cart-items-list");
+  if (cartList) {
+    cartList.addEventListener("click", (e) => {
+      const btn = e.target.closest(".cart-step-btn");
+      if (btn && btn.dataset.cartIdx !== undefined && btn.dataset.delta !== undefined) {
+        const idx = parseInt(btn.dataset.cartIdx, 10);
+        const delta = parseInt(btn.dataset.delta, 10);
+        updateCartQty(idx, delta);
+      }
+    });
+  }
+
+  // Product Grid Event Delegation (#food-cards-grid)
+  const foodGrid = $("#food-cards-grid");
+  if (foodGrid) {
+    foodGrid.addEventListener("click", (e) => {
+      const favBtn = e.target.closest(".btn-fav");
+      if (favBtn) {
+        e.stopPropagation();
+        const id = favBtn.dataset.favId;
+        if (state.favorites.has(id)) {
+          state.favorites.delete(id);
+          favBtn.classList.remove("active");
+          showToast("Removed from favorites", "info");
+        } else {
+          state.favorites.add(id);
+          favBtn.classList.add("active");
+          showToast("Added to favorites! ❤️", "success");
+        }
+        saveState();
+        return;
+      }
+
+      const addBtn = e.target.closest(".btn-add-circle");
+      if (addBtn) {
+        e.stopPropagation();
+        const id = addBtn.dataset.id;
+        const item = MENU_ITEMS.find((m) => m.id === id);
+        if (!item) return;
+        addToCart(item.id, 1, "Mild", [], "", item.price);
+        SoundSynth.playItemAdded();
+        showToast(`Added ${item.name} to order! 🛍️`, "success");
+        return;
+      }
+
+      const customEl = e.target.closest("[data-action='custom']");
+      if (customEl) {
+        const id = customEl.dataset.id;
+        const item = MENU_ITEMS.find((m) => m.id === id);
+        if (item) openItemModal(item);
+      }
+    });
+  }
 
   // Sound toggle button in utility bar
   const soundToggle = $("#sound-toggle");
@@ -2130,6 +2220,7 @@ function initEventListeners() {
 
 // ═══════════════════ APPLICATION INITIALIZATION ═══════════════════
 document.addEventListener("DOMContentLoaded", () => {
+  SoundSynth.initMuteState();
   AmbientEngine.init();
   ConfettiEngine.init();
   startClock();
